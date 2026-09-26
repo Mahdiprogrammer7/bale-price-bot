@@ -1,10 +1,11 @@
 import os
+import threading
+from flask import Flask
 from bale import Bot, Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 import requests
 
 # ==================== تنظیمات ====================
-# این مقادیر به صورت خودکار از متغیرهای محیطی لیارا خوانده می‌شوند.
-# اگر می‌خواهید روی سیستم خودتان (لوکال) تست کنید، می‌توانید مقادیر پیش‌فرض را اینجا بنویسید.
+# این مقادیر به صورت خودکار از متغیرهای محیطی رندر خوانده می‌شوند.
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 DEVELOPER_NAME = os.environ.get("DEVELOPER_NAME", "مهدی نجفی")
 FEEDBACK_ID = os.environ.get("FEEDBACK_ID", "@mahdi8iiii")
@@ -126,7 +127,6 @@ def fetch_fiat_data(symbol: str):
                 price = price_data
             
             if price is not None:
-                # قیمت مستقیماً به تومان است
                 price = float(price)
                 return {"symbol": symbol.upper(), "price": price}
         
@@ -317,6 +317,20 @@ async def on_callback(callback: CallbackQuery):
         else:
             await process_fiat_and_reply(callback.message, action)
 
+
+# --- سرور وب برای زنده نگه داشتن ربات در Render ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+threading.Thread(target=run_web_server, daemon=True).start()
+# ------------------------------------------------
 
 # اجرای ربات
 bot.run()
