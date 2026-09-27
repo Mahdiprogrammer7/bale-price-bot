@@ -8,7 +8,6 @@ from bale import Bot, Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboa
 import requests
 
 # ==================== تنظیمات ====================
-# این مقادیر به صورت خودکار از Environment Variables رندر خونده می‌شن
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 DEVELOPER_NAME = os.environ.get("DEVELOPER_NAME", "مهدی نجفی")
 FEEDBACK_ID = os.environ.get("FEEDBACK_ID", "@mahdi8iiii")
@@ -24,7 +23,7 @@ bot = Bot(token=BOT_TOKEN)
 user_states = {}
 
 POPULAR_CRYPTOS = ["BTC", "ETH", "USDT", "BNB", "SOL", "XRP", "ADA", "DOGE", "TRX", "TON"]
-POPULAR_FIATS = ["USD", "EUR", "AED", "TRY", "GBP", "IQD", "CNY", "JPY"]
+POPULAR_FIATS = ["USD", "EUR", "AED", "TRY", "GBP", "IQD", "CNY", "JPY", "CAD", "AUD", "CHF", "SAR"]
 POPULAR_GOLDS = ["gold_18", "coin_emami", "coin_half", "coin_quarter", "gold_miskal", "coin_bahar", "coin_gerami"]
 
 FIAT_NAMES = {
@@ -48,8 +47,6 @@ GOLD_NAMES = {
     "coin_gerami": "سکه گرمی",
 }
 
-
-# --- توابع کمکی ---
 
 def format_price(price_val):
     if price_val is None:
@@ -299,17 +296,20 @@ def get_current_price(asset_key: str):
 # ============================================================
 
 def main_menu_keyboard():
+    """منوی اصلی با دکمه‌های مجزا برای رمزارز، فیات و طلا"""
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(text="💱 ارز و رمزارز", callback_data="MENU:CRYPTO"), row=0)
-    markup.add(InlineKeyboardButton(text="🥇 طلا و سکه", callback_data="MENU:GOLD"), row=0)
+    markup.add(InlineKeyboardButton(text="🪙 ارز دیجیتال", callback_data="MENU:CRYPTO"), row=0)
+    markup.add(InlineKeyboardButton(text="💵 ارزهای فیات", callback_data="MENU:FIAT"), row=0)
+    markup.add(InlineKeyboardButton(text="🥇 طلا و سکه", callback_data="MENU:GOLD"), row=1)
     markup.add(InlineKeyboardButton(text="🔄 مبدل ارز", callback_data="CONV:NEW"), row=1)
-    markup.add(InlineKeyboardButton(text="🔔 هشدار قیمت", callback_data="ALERT:NEW"), row=1)
+    markup.add(InlineKeyboardButton(text="🔔 هشدار قیمت", callback_data="ALERT:NEW"), row=2)
     markup.add(InlineKeyboardButton(text="📋 هشدارهای من", callback_data="MENU:MYALERTS"), row=2)
-    markup.add(InlineKeyboardButton(text="📊 لیست رمزارزها", callback_data="MENU:LIST"), row=2)
+    markup.add(InlineKeyboardButton(text="📊 لیست رمزارزها", callback_data="MENU:LIST"), row=3)
     return markup
 
 
 def crypto_menu_keyboard():
+    """منوی ارزهای دیجیتال"""
     markup = InlineKeyboardMarkup()
     pairs = [POPULAR_CRYPTOS[i:i+2] for i in range(0, len(POPULAR_CRYPTOS), 2)]
     for row_idx, pair in enumerate(pairs):
@@ -321,7 +321,23 @@ def crypto_menu_keyboard():
     return markup
 
 
+def fiat_menu_keyboard():
+    """منوی ارزهای فیات"""
+    markup = InlineKeyboardMarkup()
+    pairs = [POPULAR_FIATS[i:i+2] for i in range(0, len(POPULAR_FIATS), 2)]
+    for row_idx, pair in enumerate(pairs):
+        for sym in pair:
+            markup.add(
+                InlineKeyboardButton(text=f"{FIAT_NAMES.get(sym, sym)}", callback_data=f"FIAT:{sym}"),
+                row=row_idx
+            )
+    next_row = len(pairs)
+    markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=next_row)
+    return markup
+
+
 def gold_menu_keyboard():
+    """منوی طلا و سکه"""
     markup = InlineKeyboardMarkup()
     pairs = [POPULAR_GOLDS[i:i+2] for i in range(0, len(POPULAR_GOLDS), 2)]
     for row_idx, pair in enumerate(pairs):
@@ -352,7 +368,7 @@ def alert_asset_list_keyboard(category):
                 markup.add(InlineKeyboardButton(text=sym, callback_data=f"ALERT:SET:{sym}"), row=row_idx)
         next_row = len(pairs)
     elif category == "fiat":
-        assets = POPULAR_FIATS[:6]
+        assets = POPULAR_FIATS[:8]
         pairs = [assets[i:i+2] for i in range(0, len(assets), 2)]
         for row_idx, pair in enumerate(pairs):
             for sym in pair:
@@ -427,7 +443,8 @@ async def show_main_menu(target, edit=False):
     text = (
         f"🏠 **منوی اصلی**\n\n"
         "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:\n\n"
-        "💱 **ارز و رمزارز** — قیمت لحظه‌ای\n"
+        "🪙 **ارز دیجیتال** — قیمت لحظه‌ای رمزارزها\n"
+        "💵 **ارزهای فیات** — قیمت دلار، یورو، درهم و...\n"
         "🥇 **طلا و سکه** — قیمت طلا، سکه و مثقال\n"
         "🔄 **مبدل ارز** — تبدیل ارزها به یکدیگر\n"
         "🔔 **هشدار قیمت** — دریافت اطلاع‌رسانی خودکار\n"
@@ -478,12 +495,12 @@ async def process_fiat_and_reply(message, symbol):
         return
     price_str = format_price(data['price'])
     result_text = (
-        f"💱 **قیمت لحظه‌ای {fiat_name}**\n"
+        f"💵 **قیمت لحظه‌ای {fiat_name}**\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"💰 قیمت: **{price_str} تومان**\n"
     )
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(text="🔙 بازگشت", callback_data="MENU:CRYPTO"), row=0)
+    markup.add(InlineKeyboardButton(text="🔙 بازگشت به ارزهای فیات", callback_data="MENU:FIAT"), row=0)
     markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=1)
     await message.reply(result_text + footer_text(), components=markup)
 
@@ -849,11 +866,24 @@ async def on_callback(callback: CallbackQuery):
 
     if data == "MENU:CRYPTO":
         clear_state(user_id)
-        text = "💱 **ارز و رمزارز**\n\nیکی از گزینه‌ها را انتخاب کنید:"
+        text = "🪙 **ارز دیجیتال**\n\nیکی از رمزارزهای زیر را انتخاب کنید:"
         try:
             await callback.message.edit(text + footer_text(), components=crypto_menu_keyboard())
         except:
             await callback.message.reply(text + footer_text(), components=crypto_menu_keyboard())
+        return
+
+    # ✅ هندلر جدید برای منوی ارزهای فیات
+    if data == "MENU:FIAT":
+        clear_state(user_id)
+        text = (
+            "💵 **ارزهای فیات**\n\n"
+            "یکی از ارزهای زیر را انتخاب کنید تا قیمت لحظه‌ای آن را ببینید:"
+        )
+        try:
+            await callback.message.edit(text + footer_text(), components=fiat_menu_keyboard())
+        except:
+            await callback.message.reply(text + footer_text(), components=fiat_menu_keyboard())
         return
 
     if data == "MENU:GOLD":
