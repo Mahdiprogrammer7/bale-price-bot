@@ -102,8 +102,6 @@ def get_asset_display_name(asset_key):
     return asset_key
 
 
-# --- مدیریت هشدارها ---
-
 def load_alerts():
     try:
         with open(ALERTS_FILE, 'r', encoding='utf-8') as f:
@@ -140,8 +138,6 @@ def remove_alert(chat_id, asset_key):
     alerts = [a for a in alerts if not (a["chat_id"] == str(chat_id) and a["asset"] == asset_key)]
     save_alerts(alerts)
 
-
-# --- دریافت قیمت‌ها ---
 
 def fetch_crypto_data(symbol: str):
     symbol = symbol.strip().upper()
@@ -296,7 +292,6 @@ def get_current_price(asset_key: str):
 # ============================================================
 
 def main_menu_keyboard():
-    """منوی اصلی با دکمه‌های مجزا برای رمزارز، فیات و طلا"""
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton(text="🪙 ارز دیجیتال", callback_data="MENU:CRYPTO"), row=0)
     markup.add(InlineKeyboardButton(text="💵 ارزهای فیات", callback_data="MENU:FIAT"), row=0)
@@ -309,7 +304,6 @@ def main_menu_keyboard():
 
 
 def crypto_menu_keyboard():
-    """منوی ارزهای دیجیتال"""
     markup = InlineKeyboardMarkup()
     pairs = [POPULAR_CRYPTOS[i:i+2] for i in range(0, len(POPULAR_CRYPTOS), 2)]
     for row_idx, pair in enumerate(pairs):
@@ -322,7 +316,6 @@ def crypto_menu_keyboard():
 
 
 def fiat_menu_keyboard():
-    """منوی ارزهای فیات"""
     markup = InlineKeyboardMarkup()
     pairs = [POPULAR_FIATS[i:i+2] for i in range(0, len(POPULAR_FIATS), 2)]
     for row_idx, pair in enumerate(pairs):
@@ -337,7 +330,6 @@ def fiat_menu_keyboard():
 
 
 def gold_menu_keyboard():
-    """منوی طلا و سکه"""
     markup = InlineKeyboardMarkup()
     pairs = [POPULAR_GOLDS[i:i+2] for i in range(0, len(POPULAR_GOLDS), 2)]
     for row_idx, pair in enumerate(pairs):
@@ -601,10 +593,6 @@ async def do_convert(target, amount, from_asset, to_asset):
     markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=1)
     await target.reply(result_text + footer_text(), components=markup)
 
-
-# ============================================================
-#                    چک‌کننده هشدارها
-# ============================================================
 
 def alert_checker():
     while True:
@@ -873,7 +861,6 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.reply(text + footer_text(), components=crypto_menu_keyboard())
         return
 
-    # ✅ هندلر جدید برای منوی ارزهای فیات
     if data == "MENU:FIAT":
         clear_state(user_id)
         text = (
@@ -1115,26 +1102,79 @@ def run_web_server():
 
 threading.Thread(target=run_web_server, daemon=True).start()
 
+
 # ============================================================
-#       Override API URL برای استفاده از Cloudflare Proxy
+#       DEBUG: پیدا کردن محل ذخیره URL در کتابخانه بله
 # ============================================================
 PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
 
-# تلاش برای پیدا کردن و تغییر آدرس API
-_overridden = False
-for attr_name in ['api_url', '_api_url', '_Bot__api_url', '__api_url']:
-    if hasattr(bot, attr_name):
-        try:
-            setattr(bot, attr_name, f"{PROXY_URL}/bot{BOT_TOKEN}")
-            print(f"✅ API URL با موفقیت از طریق {attr_name} تغییر کرد")
-            _overridden = True
-            break
-        except Exception as e:
-            print(f"⚠️ خطا در تغییر {attr_name}: {e}")
+print("=" * 60)
+print("🔍 DEBUG: Starting URL search in Bale bot library")
+print("=" * 60)
 
-if not _overridden:
-    print("⚠️ هشدار: نتوانستیم API URL رو تغییر بدیم. لطفاً لیست زیر رو بررسی کن:")
-    print([a for a in dir(bot) if 'url' in a.lower() or 'api' in a.lower()])
+# تابع جستجوی عمیق برای پیدا کردن رشته‌های حاوی URL
+def search_urls(obj, prefix="bot", depth=5, visited=None):
+    if visited is None:
+        visited = set()
+    if depth <= 0:
+        return
+    if id(obj) in visited:
+        return
+    visited.add(id(obj))
+
+    try:
+        attrs = dir(obj)
+    except Exception:
+        return
+
+    for attr in attrs:
+        if attr.startswith('__'):
+            continue
+        try:
+            val = getattr(obj, attr)
+            if isinstance(val, str) and 'tapi.bale' in val:
+                print(f"  🎯 FOUND: {prefix}.{attr} = {val}")
+            elif not callable(val) and not isinstance(val, (int, float, bool, bytes, list, tuple, set, dict)):
+                search_urls(val, f"{prefix}.{attr}", depth-1, visited)
+        except Exception:
+            pass
+
+try:
+    search_urls(bot, "bot")
+except Exception as e:
+    print(f"Search error: {e}")
+
+print("\n📋 Bot attributes with 'url' or 'api' or 'http':")
+try:
+    for a in dir(bot):
+        if 'url' in a.lower() or 'api' in a.lower() or 'http' in a.lower():
+            try:
+                v = getattr(bot, a)
+                print(f"  bot.{a} = {type(v).__name__} -> {repr(v)[:100]}")
+            except:
+                pass
+except Exception as e:
+    print(f"  Error: {e}")
+
+if hasattr(bot, '_http'):
+    print("\n📋 bot._http attributes:")
+    try:
+        for a in dir(bot._http):
+            if not a.startswith('__'):
+                try:
+                    v = getattr(bot._http, a)
+                    if not callable(v):
+                        print(f"  bot._http.{a} = {type(v).__name__} -> {repr(v)[:100]}")
+                except:
+                    pass
+    except Exception as e:
+        print(f"  Error: {e}")
+
+print("=" * 60)
+print("🔍 DEBUG: Search complete")
+print("=" * 60)
 # ============================================================
+
+
 # --- اجرای ربات ---
 bot.run()
