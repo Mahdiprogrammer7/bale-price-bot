@@ -4,6 +4,7 @@ import json
 import time
 import asyncio
 import threading
+import certifi
 import aiohttp
 from flask import Flask
 from bale import Bot, Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -39,7 +40,7 @@ async def _patched_aiohttp_request(self, method, url, *args, **kwargs):
     return await _original_aiohttp_request(self, method, url_str, *args, **kwargs)
 
 aiohttp.ClientSession._request = _patched_aiohttp_request
-print("✅ Cloudflare Proxy override فعال شد!")
+print("✅ Cloudflare Proxy override فعال شد!", flush=True)
 # ============================================================
 
 
@@ -56,18 +57,26 @@ alerts_collection = None
 
 async def init_db():
     global db_client, alerts_collection
+    print(f"🔍 DEBUG: init_db called. MONGO_URI starts with: {MONGO_URI[:30] if MONGO_URI else 'EMPTY'}", flush=True)
     if not MONGO_URI:
-        print("⚠️ MONGO_URI تنظیم نشده است. از فایل alerts.json استفاده می‌شود.")
+        print("⚠️ MONGO_URI تنظیم نشده است. از فایل alerts.json استفاده می‌شود.", flush=True)
         return False
     try:
-        db_client = AsyncIOMotorClient(MONGO_URI, server_api=ServerApi('1'))
+        # 🔴 تغییر اصلی: اضافه کردن tlsCAFile=certifi.where() برای حل مشکل SSL
+        db_client = AsyncIOMotorClient(
+            MONGO_URI,
+            server_api=ServerApi('1'),
+            tlsCAFile=certifi.where()
+        )
         await db_client.admin.command('ping')
         db = db_client["bale_bot_db"]
         alerts_collection = db["alerts"]
-        print("✅ اتصال به MongoDB با موفقیت برقرار شد!")
+        print("✅ اتصال به MongoDB با موفقیت برقرار شد!", flush=True)
         return True
     except Exception as e:
-        print(f"❌ خطا در اتصال به MongoDB: {e}")
+        print(f"❌ خطا در اتصال به MongoDB: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         return False
 # ============================================================
 
@@ -147,7 +156,7 @@ def get_asset_display_name(asset_key):
     return asset_key
 
 
-# --- توابع دیتابیس (جایگزین فایل alerts.json) ---
+# --- توابع دیتابیس ---
 
 async def add_alert(chat_id, asset_key, target_price, direction):
     if alerts_collection is not None:
@@ -636,6 +645,7 @@ async def do_convert(target, amount, from_asset, to_asset):
 
 
 async def alert_checker_async():
+    print("🔔 Alert checker started!", flush=True)
     while True:
         try:
             alerts = await get_all_alerts()
@@ -668,13 +678,13 @@ async def alert_checker_async():
                     try:
                         await bot.send_message(alert["chat_id"], notification)
                     except Exception as e:
-                        print(f"Error sending alert: {e}")
+                        print(f"Error sending alert: {e}", flush=True)
                     if alerts_collection is not None:
                         await alerts_collection.delete_one({"_id": alert["_id"]})
                     else:
                         await remove_alert(alert["chat_id"], alert["asset"])
         except Exception as e:
-            print(f"Alert checker error: {e}")
+            print(f"Alert checker error: {e}", flush=True)
         await asyncio.sleep(60)
 
 
@@ -684,10 +694,34 @@ async def alert_checker_async():
 
 @bot.event
 async def on_ready():
-    print(f"ربات {bot.user.username} با موفقیت روشن شد و آماده به کار است!")
-    await init_db()
-    threading.Thread(target=lambda: asyncio.run(alert_checker_async()), daemon=True).start()
-    print("✅ سیستم هشدار قیمت فعال شد!")
+    print("=" * 60, flush=True)
+    print("🚀 ON_READY CALLED!", flush=True)
+    print("=" * 60, flush=True)
+    print(f"ربات {bot.user.username} با موفقیت روشن شد و آماده به کار است!", flush=True)
+
+    try:
+        db_ok = await init_db()
+        if db_ok:
+            print("✅ MongoDB متصل شد و آماده استفاده است!", flush=True)
+        else:
+            print("❌ MongoDB متصل نشد! از فایل alerts.json استفاده می‌شود.", flush=True)
+    except Exception as e:
+        print(f"❌ خطا در init_db: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+
+    try:
+        def run_checker():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(alert_checker_async())
+
+        threading.Thread(target=run_checker, daemon=True).start()
+        print("✅ سیستم هشدار قیمت فعال شد!", flush=True)
+    except Exception as e:
+        print(f"❌ خطا در شروع alert_checker: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
 
 
 @bot.event
@@ -777,7 +811,7 @@ async def on_message(message: Message):
                 await bot.send_photo(chat_id=user_id, photo=WELCOME_IMAGE_URL, caption=welcome_text, components=markup)
                 return
             except Exception as e:
-                print(f"Error sending welcome photo: {e}")
+                print(f"Error sending welcome photo: {e}", flush=True)
         await message.reply(welcome_text, components=markup)
         return
 
@@ -808,7 +842,7 @@ async def on_message(message: Message):
                 await message.reply("، ".join(chunk))
         except Exception as e:
             await message.reply("⚠️ خطا در دریافت لیست رمزارزها." + footer_text())
-            print(f"Error fetching crypto list: {e}")
+            print(f"Error fetching crypto list: {e}", flush=True)
         return
     if text == '/myalerts':
         await show_my_alerts(message, user_id)
@@ -931,7 +965,7 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.reply("🔙", components=markup)
         except Exception as e:
             await callback.message.reply("⚠️ خطا." + footer_text())
-            print(f"Error: {e}")
+            print(f"Error: {e}", flush=True)
         return
     if data.startswith("CRYPTO:"):
         parts = data.split(":")
