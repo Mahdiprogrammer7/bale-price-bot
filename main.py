@@ -62,7 +62,6 @@ async def init_db():
         print("⚠️ MONGO_URI تنظیم نشده است. از فایل alerts.json استفاده می‌شود.", flush=True)
         return False
     try:
-        # 🔴 تغییر اصلی: اضافه کردن tlsCAFile=certifi.where() برای حل مشکل SSL
         db_client = AsyncIOMotorClient(
             MONGO_URI,
             server_api=ServerApi('1'),
@@ -263,7 +262,7 @@ def fetch_crypto_data(symbol: str):
             return {"symbol": target_key, "buy_price": buy_price, "sell_price": sell_price, "change": change}
         return None
     except Exception as e:
-        print(f"API Error (Crypto): {e}")
+        print(f"API Error (Crypto): {e}", flush=True)
         return None
 
 
@@ -318,7 +317,7 @@ def fetch_fiat_data(symbol: str):
                 return {"symbol": symbol.upper(), "price": price}
         return None
     except Exception as e:
-        print(f"API Error (Fiat): {e}")
+        print(f"API Error (Fiat): {e}", flush=True)
         return None
 
 
@@ -350,7 +349,7 @@ def fetch_gold_data(asset_key: str):
                 return {"symbol": asset_key, "price": price_18 * 4.608}
         return None
     except Exception as e:
-        print(f"API Error (Gold): {e}")
+        print(f"API Error (Gold): {e}", flush=True)
         return None
 
 
@@ -711,12 +710,8 @@ async def on_ready():
         traceback.print_exc()
 
     try:
-        def run_checker():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(alert_checker_async())
-
-        threading.Thread(target=run_checker, daemon=True).start()
+        # ✅ اصلاح اصلی: استفاده از asyncio.create_task به جای thread جداگانه
+        asyncio.create_task(alert_checker_async())
         print("✅ سیستم هشدار قیمت فعال شد!", flush=True)
     except Exception as e:
         print(f"❌ خطا در شروع alert_checker: {e}", flush=True)
