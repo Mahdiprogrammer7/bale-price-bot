@@ -298,6 +298,10 @@ def fetch_gold_data(asset_key: str):
 
 
 def get_current_price(asset_key: str):
+    # ✅ اصلاح: تومان به عنوان پایه محاسبه می‌شود (۱ تومان = ۱ تومان)
+    if asset_key == "TOMAN":
+        return {"symbol": "TOMAN", "price": 1.0}
+    
     if asset_key in GOLD_NAMES:
         return fetch_gold_data(asset_key)
     elif asset_key in FIAT_NAMES:
