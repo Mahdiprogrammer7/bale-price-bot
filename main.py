@@ -3,6 +3,7 @@ import re
 import json
 import time
 import threading
+import aiohttp
 from flask import Flask
 from bale import Bot, Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 import requests
@@ -16,7 +17,28 @@ CRYPTO_API_URL = 'https://api.abantether.com/api/v1/manager/otc/ticker'
 FIAT_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/fiat.json'
 GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gold.json'
 ALERTS_FILE = 'alerts.json'
+
+PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
 # ==================================================
+
+
+# ============================================================
+#       استفاده از Cloudflare Proxy برای دور زدن محدودیت IP
+# ============================================================
+_original_aiohttp_request = aiohttp.ClientSession._request
+
+async def _patched_aiohttp_request(self, method, url, *args, **kwargs):
+    url_str = str(url)
+    if 'tapi.bale.ai' in url_str:
+        new_url = url_str.replace('https://tapi.bale.ai', PROXY_URL).replace('http://tapi.bale.ai', PROXY_URL)
+        print(f"🔄 Redirecting bale request to proxy")
+        url_str = new_url
+    return await _original_aiohttp_request(self, method, url_str, *args, **kwargs)
+
+aiohttp.ClientSession._request = _patched_aiohttp_request
+print("✅ Cloudflare Proxy override فعال شد!")
+# ============================================================
+
 
 bot = Bot(token=BOT_TOKEN)
 
@@ -1101,79 +1123,6 @@ def run_web_server():
     app.run(host='0.0.0.0', port=port)
 
 threading.Thread(target=run_web_server, daemon=True).start()
-
-
-# ============================================================
-#       DEBUG: پیدا کردن محل ذخیره URL در کتابخانه بله
-# ============================================================
-PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
-
-print("=" * 60)
-print("🔍 DEBUG: Starting URL search in Bale bot library")
-print("=" * 60)
-
-# تابع جستجوی عمیق برای پیدا کردن رشته‌های حاوی URL
-def search_urls(obj, prefix="bot", depth=5, visited=None):
-    if visited is None:
-        visited = set()
-    if depth <= 0:
-        return
-    if id(obj) in visited:
-        return
-    visited.add(id(obj))
-
-    try:
-        attrs = dir(obj)
-    except Exception:
-        return
-
-    for attr in attrs:
-        if attr.startswith('__'):
-            continue
-        try:
-            val = getattr(obj, attr)
-            if isinstance(val, str) and 'tapi.bale' in val:
-                print(f"  🎯 FOUND: {prefix}.{attr} = {val}")
-            elif not callable(val) and not isinstance(val, (int, float, bool, bytes, list, tuple, set, dict)):
-                search_urls(val, f"{prefix}.{attr}", depth-1, visited)
-        except Exception:
-            pass
-
-try:
-    search_urls(bot, "bot")
-except Exception as e:
-    print(f"Search error: {e}")
-
-print("\n📋 Bot attributes with 'url' or 'api' or 'http':")
-try:
-    for a in dir(bot):
-        if 'url' in a.lower() or 'api' in a.lower() or 'http' in a.lower():
-            try:
-                v = getattr(bot, a)
-                print(f"  bot.{a} = {type(v).__name__} -> {repr(v)[:100]}")
-            except:
-                pass
-except Exception as e:
-    print(f"  Error: {e}")
-
-if hasattr(bot, '_http'):
-    print("\n📋 bot._http attributes:")
-    try:
-        for a in dir(bot._http):
-            if not a.startswith('__'):
-                try:
-                    v = getattr(bot._http, a)
-                    if not callable(v):
-                        print(f"  bot._http.{a} = {type(v).__name__} -> {repr(v)[:100]}")
-                except:
-                    pass
-    except Exception as e:
-        print(f"  Error: {e}")
-
-print("=" * 60)
-print("🔍 DEBUG: Search complete")
-print("=" * 60)
-# ============================================================
 
 
 # --- اجرای ربات ---
