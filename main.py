@@ -1115,5 +1115,26 @@ def run_web_server():
 
 threading.Thread(target=run_web_server, daemon=True).start()
 
+# ============================================================
+#       Override API URL برای استفاده از Cloudflare Proxy
+# ============================================================
+PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
+
+# تلاش برای پیدا کردن و تغییر آدرس API
+_overridden = False
+for attr_name in ['api_url', '_api_url', '_Bot__api_url', '__api_url']:
+    if hasattr(bot, attr_name):
+        try:
+            setattr(bot, attr_name, f"{PROXY_URL}/bot{BOT_TOKEN}")
+            print(f"✅ API URL با موفقیت از طریق {attr_name} تغییر کرد")
+            _overridden = True
+            break
+        except Exception as e:
+            print(f"⚠️ خطا در تغییر {attr_name}: {e}")
+
+if not _overridden:
+    print("⚠️ هشدار: نتوانستیم API URL رو تغییر بدیم. لطفاً لیست زیر رو بررسی کن:")
+    print([a for a in dir(bot) if 'url' in a.lower() or 'api' in a.lower()])
+# ============================================================
 # --- اجرای ربات ---
 bot.run()
