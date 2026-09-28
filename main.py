@@ -2,26 +2,27 @@ import os
 import re
 import json
 import time
+import asyncio
 import threading
 import aiohttp
 from flask import Flask
 from bale import Bot, Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 import requests
+from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.server_api import ServerApi
 
 # ==================== تنظیمات ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 DEVELOPER_NAME = os.environ.get("DEVELOPER_NAME", "مهدی نجفی")
 FEEDBACK_ID = os.environ.get("FEEDBACK_ID", "@mahdi8iiii")
+MONGO_URI = os.environ.get("MONGO_URI", "")
 
 CRYPTO_API_URL = 'https://api.abantether.com/api/v1/manager/otc/ticker'
 FIAT_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/fiat.json'
 GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gold.json'
-ALERTS_FILE = 'alerts.json'
 
 PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
-
-# 🔴 لینک تصویر خوش‌آمدگویی از سایت دنیای اقتصاد
-WELCOME_IMAGE_URL = "https://cdn.donya-e-eqtesad.com/thumbnail/0TqL1zjwkORt/QHn8O9nsSzT8qCU7RegsN6Pbb5v74eEtbKeSOh05RaZum_w2CVKcVkt7TZyzEhnm/bitcoin-cryptocurrency-digital-money-golden-coin-technology-business-concept-scaled.jpg"
+WELCOME_IMAGE_URL = ""
 # ==================================================
 
 
@@ -34,7 +35,6 @@ async def _patched_aiohttp_request(self, method, url, *args, **kwargs):
     url_str = str(url)
     if 'tapi.bale.ai' in url_str:
         new_url = url_str.replace('https://tapi.bale.ai', PROXY_URL).replace('http://tapi.bale.ai', PROXY_URL)
-        print(f"🔄 Redirecting bale request to proxy")
         url_str = new_url
     return await _original_aiohttp_request(self, method, url_str, *args, **kwargs)
 
@@ -46,7 +46,31 @@ print("✅ Cloudflare Proxy override فعال شد!")
 bot = Bot(token=BOT_TOKEN)
 
 user_states = {}
-bot_users = set()  # برای شمارش کاربران
+bot_users = set()
+
+# ============================================================
+#       اتصال به دیتابیس MongoDB
+# ============================================================
+db_client = None
+alerts_collection = None
+
+async def init_db():
+    global db_client, alerts_collection
+    if not MONGO_URI:
+        print("⚠️ MONGO_URI تنظیم نشده است. از فایل alerts.json استفاده می‌شود.")
+        return False
+    try:
+        db_client = AsyncIOMotorClient(MONGO_URI, server_api=ServerApi('1'))
+        await db_client.admin.command('ping')
+        db = db_client["bale_bot_db"]
+        alerts_collection = db["alerts"]
+        print("✅ اتصال به MongoDB با موفقیت برقرار شد!")
+        return True
+    except Exception as e:
+        print(f"❌ خطا در اتصال به MongoDB: {e}")
+        return False
+# ============================================================
+
 
 POPULAR_CRYPTOS = ["BTC", "ETH", "USDT", "BNB", "SOL", "XRP", "ADA", "DOGE", "TRX", "TON"]
 POPULAR_FIATS = ["USD", "EUR", "AED", "TRY", "GBP", "IQD", "CNY", "JPY", "CAD", "AUD", "CHF", "SAR"]
@@ -63,14 +87,9 @@ FIAT_NAMES = {
 }
 
 GOLD_NAMES = {
-    "gold_18": "طلای ۱۸ عیار",
-    "gold_24": "طلای ۲۴ عیار",
-    "gold_miskal": "مثقال طلا",
-    "coin_emami": "سکه امامی",
-    "coin_bahar": "سکه بهار آزادی",
-    "coin_half": "نیم سکه",
-    "coin_quarter": "ربع سکه",
-    "coin_gerami": "سکه گرمی",
+    "gold_18": "طلای ۱۸ عیار", "gold_24": "طلای ۲۴ عیار", "gold_miskal": "مثقال طلا",
+    "coin_emami": "سکه امامی", "coin_bahar": "سکه بهار آزادی", "coin_half": "نیم سکه",
+    "coin_quarter": "ربع سکه", "coin_gerami": "سکه گرمی",
 }
 
 
@@ -128,42 +147,71 @@ def get_asset_display_name(asset_key):
     return asset_key
 
 
-def load_alerts():
-    try:
-        with open(ALERTS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+# --- توابع دیتابیس (جایگزین فایل alerts.json) ---
+
+async def add_alert(chat_id, asset_key, target_price, direction):
+    if alerts_collection is not None:
+        await alerts_collection.delete_many({"chat_id": str(chat_id), "asset": asset_key})
+        await alerts_collection.insert_one({
+            "chat_id": str(chat_id),
+            "asset": asset_key,
+            "target_price": float(target_price),
+            "direction": direction,
+            "created_at": time.time()
+        })
+    else:
+        alerts = []
+        try:
+            with open('alerts.json', 'r', encoding='utf-8') as f:
+                alerts = json.load(f)
+        except:
+            pass
+        alerts = [a for a in alerts if not (a["chat_id"] == str(chat_id) and a["asset"] == asset_key)]
+        alerts.append({"chat_id": str(chat_id), "asset": asset_key, "target_price": float(target_price), "direction": direction, "created_at": time.time()})
+        with open('alerts.json', 'w', encoding='utf-8') as f:
+            json.dump(alerts, f, ensure_ascii=False, indent=2)
 
 
-def save_alerts(alerts):
-    with open(ALERTS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(alerts, f, ensure_ascii=False, indent=2)
+async def get_user_alerts(chat_id):
+    if alerts_collection is not None:
+        cursor = alerts_collection.find({"chat_id": str(chat_id)})
+        return await cursor.to_list(length=None)
+    else:
+        try:
+            with open('alerts.json', 'r', encoding='utf-8') as f:
+                alerts = json.load(f)
+            return [a for a in alerts if a["chat_id"] == str(chat_id)]
+        except:
+            return []
 
 
-def add_alert(chat_id, asset_key, target_price, direction):
-    alerts = load_alerts()
-    alerts = [a for a in alerts if not (a["chat_id"] == str(chat_id) and a["asset"] == asset_key)]
-    alerts.append({
-        "chat_id": str(chat_id),
-        "asset": asset_key,
-        "target_price": float(target_price),
-        "direction": direction,
-        "created_at": time.time()
-    })
-    save_alerts(alerts)
+async def remove_alert(chat_id, asset_key):
+    if alerts_collection is not None:
+        await alerts_collection.delete_one({"chat_id": str(chat_id), "asset": asset_key})
+    else:
+        try:
+            with open('alerts.json', 'r', encoding='utf-8') as f:
+                alerts = json.load(f)
+            alerts = [a for a in alerts if not (a["chat_id"] == str(chat_id) and a["asset"] == asset_key)]
+            with open('alerts.json', 'w', encoding='utf-8') as f:
+                json.dump(alerts, f, ensure_ascii=False, indent=2)
+        except:
+            pass
 
 
-def get_user_alerts(chat_id):
-    alerts = load_alerts()
-    return [a for a in alerts if a["chat_id"] == str(chat_id)]
+async def get_all_alerts():
+    if alerts_collection is not None:
+        cursor = alerts_collection.find({})
+        return await cursor.to_list(length=None)
+    else:
+        try:
+            with open('alerts.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return []
 
 
-def remove_alert(chat_id, asset_key):
-    alerts = load_alerts()
-    alerts = [a for a in alerts if not (a["chat_id"] == str(chat_id) and a["asset"] == asset_key)]
-    save_alerts(alerts)
-
+# --- دریافت قیمت‌ها ---
 
 def fetch_crypto_data(symbol: str):
     symbol = symbol.strip().upper()
@@ -267,12 +315,8 @@ def fetch_fiat_data(symbol: str):
 
 def fetch_gold_data(asset_key: str):
     key_map = {
-        "gold_18": "18ayar",
-        "coin_emami": "sekkeh",
-        "coin_bahar": "bahar",
-        "coin_half": "nim",
-        "coin_quarter": "rob",
-        "coin_gerami": "gerami",
+        "gold_18": "18ayar", "coin_emami": "sekkeh", "coin_bahar": "bahar",
+        "coin_half": "nim", "coin_quarter": "rob", "coin_gerami": "gerami",
     }
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -348,10 +392,7 @@ def fiat_menu_keyboard():
     pairs = [POPULAR_FIATS[i:i+2] for i in range(0, len(POPULAR_FIATS), 2)]
     for row_idx, pair in enumerate(pairs):
         for sym in pair:
-            markup.add(
-                InlineKeyboardButton(text=f"{FIAT_NAMES.get(sym, sym)}", callback_data=f"FIAT:{sym}"),
-                row=row_idx
-            )
+            markup.add(InlineKeyboardButton(text=f"{FIAT_NAMES.get(sym, sym)}", callback_data=f"FIAT:{sym}"), row=row_idx)
     next_row = len(pairs)
     markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=next_row)
     return markup
@@ -382,28 +423,18 @@ def alert_asset_list_keyboard(category):
     markup = InlineKeyboardMarkup()
     if category == "crypto":
         assets = POPULAR_CRYPTOS[:8]
-        pairs = [assets[i:i+2] for i in range(0, len(assets), 2)]
-        for row_idx, pair in enumerate(pairs):
-            for sym in pair:
-                markup.add(InlineKeyboardButton(text=sym, callback_data=f"ALERT:SET:{sym}"), row=row_idx)
-        next_row = len(pairs)
     elif category == "fiat":
         assets = POPULAR_FIATS[:8]
-        pairs = [assets[i:i+2] for i in range(0, len(assets), 2)]
-        for row_idx, pair in enumerate(pairs):
-            for sym in pair:
-                markup.add(InlineKeyboardButton(text=FIAT_NAMES.get(sym, sym), callback_data=f"ALERT:SET:{sym}"), row=row_idx)
-        next_row = len(pairs)
     elif category == "gold":
         assets = POPULAR_GOLDS[:6]
-        pairs = [assets[i:i+2] for i in range(0, len(assets), 2)]
-        for row_idx, pair in enumerate(pairs):
-            for sym in pair:
-                markup.add(InlineKeyboardButton(text=GOLD_NAMES.get(sym, sym), callback_data=f"ALERT:SET:{sym}"), row=row_idx)
-        next_row = len(pairs)
     else:
-        next_row = 0
-
+        assets = []
+    pairs = [assets[i:i+2] for i in range(0, len(assets), 2)]
+    for row_idx, pair in enumerate(pairs):
+        for sym in pair:
+            name = GOLD_NAMES.get(sym, FIAT_NAMES.get(sym, sym))
+            markup.add(InlineKeyboardButton(text=name, callback_data=f"ALERT:SET:{sym}"), row=row_idx)
+    next_row = len(pairs)
     markup.add(InlineKeyboardButton(text="🔙 بازگشت", callback_data="ALERT:NEW"), row=next_row)
     markup.add(InlineKeyboardButton(text="❌ انصراف", callback_data="ALERT:CANCEL"), row=next_row + 1)
     return markup
@@ -514,11 +545,7 @@ async def process_fiat_and_reply(message, symbol):
         await message.reply(f"❌ ارز **{fiat_name}** یافت نشد." + footer_text())
         return
     price_str = format_price(data['price'])
-    result_text = (
-        f"💵 **قیمت لحظه‌ای {fiat_name}**\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"💰 قیمت: **{price_str} تومان**\n"
-    )
+    result_text = f"💵 **قیمت لحظه‌ای {fiat_name}**\n━━━━━━━━━━━━━━━━━━\n💰 قیمت: **{price_str} تومان**\n"
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton(text="🔙 بازگشت به ارزهای فیات", callback_data="MENU:FIAT"), row=0)
     markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=1)
@@ -532,11 +559,7 @@ async def process_gold_and_reply(message, asset_key):
         await message.reply(f"❌ قیمت **{gold_name}** در دسترس نیست." + footer_text())
         return
     price_str = format_price(data['price'])
-    result_text = (
-        f"🥇 **قیمت لحظه‌ای {gold_name}**\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"💰 قیمت: **{price_str} تومان**\n"
-    )
+    result_text = f"🥇 **قیمت لحظه‌ای {gold_name}**\n━━━━━━━━━━━━━━━━━━\n💰 قیمت: **{price_str} تومان**\n"
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton(text="🔙 بازگشت به طلا و سکه", callback_data="MENU:GOLD"), row=0)
     markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=1)
@@ -544,12 +567,9 @@ async def process_gold_and_reply(message, asset_key):
 
 
 async def show_my_alerts(target, user_id, edit=False):
-    alerts = get_user_alerts(user_id)
+    alerts = await get_user_alerts(user_id)
     if not alerts:
-        text = (
-            "📭 **شما هیچ هشدار قیمتی ثبت نکرده‌اید.**\n\n"
-            "برای ثبت هشدار، روی دکمه زیر کلیک کنید:"
-        ) + footer_text()
+        text = "📭 **شما هیچ هشدار قیمتی ثبت نکرده‌اید.**\n\nبرای ثبت هشدار، روی دکمه زیر کلیک کنید:" + footer_text()
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton(text="🔔 ثبت هشدار جدید", callback_data="ALERT:NEW"), row=0)
         markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=1)
@@ -584,17 +604,13 @@ async def do_convert(target, amount, from_asset, to_asset):
     if not from_price or from_price.get("price") is None:
         await target.reply(f"❌ قیمت **{get_asset_display_name(from_asset)}** یافت نشد." + footer_text())
         return
-
     from_name = get_asset_display_name(from_asset)
     to_name = get_asset_display_name(to_asset)
-
     if to_asset == "TOMAN":
         result = amount * from_price["price"]
         result_text = (
-            f"🔄 **نتیجه تبدیل**\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"💱 {amount:,.2f} {from_name}\n"
-            f"⬇️⬇️⬇️\n"
+            f"🔄 **نتیجه تبدیل**\n━━━━━━━━━━━━━━━━━━\n"
+            f"💱 {amount:,.2f} {from_name}\n⬇️⬇️⬇️\n"
             f"💰 **{result:,.0f} تومان**\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"📊 نرخ: ۱ {from_name} = {format_price(from_price['price'])} تومان"
@@ -606,71 +622,60 @@ async def do_convert(target, amount, from_asset, to_asset):
             return
         result = amount * from_price["price"] / to_price["price"]
         result_text = (
-            f"🔄 **نتیجه تبدیل**\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"💱 {amount:,.2f} {from_name}\n"
-            f"⬇️⬇️⬇️\n"
+            f"🔄 **نتیجه تبدیل**\n━━━━━━━━━━━━━━━━━━\n"
+            f"💱 {amount:,.2f} {from_name}\n⬇️⬇️⬇️\n"
             f"💰 **{result:,.4f} {to_name}**\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"📊 نرخ {from_name}: {format_price(from_price['price'])} تومان\n"
             f"📊 نرخ {to_name}: {format_price(to_price['price'])} تومان"
         )
-
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton(text="🔄 تبدیل جدید", callback_data="CONV:NEW"), row=0)
     markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=1)
     await target.reply(result_text + footer_text(), components=markup)
 
 
-def alert_checker():
+async def alert_checker_async():
     while True:
         try:
-            alerts = load_alerts()
+            alerts = await get_all_alerts()
             if not alerts:
-                time.sleep(60)
+                await asyncio.sleep(60)
                 continue
-
             for alert in alerts[:]:
                 current = get_current_price(alert["asset"])
                 if not current or current.get("price") is None:
                     continue
-
                 current_price = float(current["price"])
                 target = alert["target_price"]
                 direction = alert["direction"]
-
                 triggered = False
                 if direction == "above" and current_price >= target:
                     triggered = True
                 elif direction == "below" and current_price <= target:
                     triggered = True
-
                 if triggered:
                     name = get_asset_display_name(alert["asset"])
                     direction_text = "بالا رفت 📈" if direction == "above" else "پایین آمد 📉"
-
                     notification = (
-                        f"🔔 **هشدار قیمت!**\n"
-                        f"━━━━━━━━━━━━━━━━━━\n"
+                        f"🔔 **هشدار قیمت!**\n━━━━━━━━━━━━━━━━━━\n"
                         f"📊 دارایی: **{name}**\n"
                         f"💰 قیمت فعلی: **{format_price(current_price)} تومان**\n"
                         f"🎯 قیمت هدف: {format_price(target)} تومان\n"
                         f"📈 وضعیت: قیمت از هدف شما {direction_text}\n"
                         f"━━━━━━━━━━━━━━━━━━" + footer_text()
                     )
-
                     try:
-                        bot.send_message(alert["chat_id"], notification)
+                        await bot.send_message(alert["chat_id"], notification)
                     except Exception as e:
                         print(f"Error sending alert: {e}")
-
-                    alerts.remove(alert)
-
-            save_alerts(alerts)
+                    if alerts_collection is not None:
+                        await alerts_collection.delete_one({"_id": alert["_id"]})
+                    else:
+                        await remove_alert(alert["chat_id"], alert["asset"])
         except Exception as e:
             print(f"Alert checker error: {e}")
-
-        time.sleep(60)
+        await asyncio.sleep(60)
 
 
 # ============================================================
@@ -680,8 +685,8 @@ def alert_checker():
 @bot.event
 async def on_ready():
     print(f"ربات {bot.user.username} با موفقیت روشن شد و آماده به کار است!")
-    checker_thread = threading.Thread(target=alert_checker, daemon=True)
-    checker_thread.start()
+    await init_db()
+    threading.Thread(target=lambda: asyncio.run(alert_checker_async()), daemon=True).start()
     print("✅ سیستم هشدار قیمت فعال شد!")
 
 
@@ -689,12 +694,9 @@ async def on_ready():
 async def on_message(message: Message):
     if message.author.is_bot:
         return
-
     user_id = get_user_id_from_message(message)
     text = message.content.strip()
     text_upper = text.upper()
-
-    # اضافه کردن کاربر به لیست (برای شمارش)
     bot_users.add(user_id)
 
     if user_id in user_states:
@@ -724,27 +726,18 @@ async def on_message(message: Message):
                 data["asset"] = asset_key
                 user_states[user_id]["state"] = "alert_awaiting_price"
                 asset_name = get_asset_display_name(asset_key)
-                msg = (
-                    f"✅ دارایی انتخاب شده: **{asset_name}**\n\n"
-                    f"💰 حالا **قیمت هدف** را به تومان وارد کنید:\n"
-                    f"(فقط عدد، مثلاً: `250000`)"
-                ) + footer_text()
+                msg = f"✅ دارایی انتخاب شده: **{asset_name}**\n\n💰 حالا **قیمت هدف** را به تومان وارد کنید:\n(فقط عدد، مثلاً: `250000`)" + footer_text()
                 await message.reply(msg)
             else:
                 crypto_data = fetch_crypto_data(asset_key)
                 if crypto_data:
                     data["asset"] = asset_key
                     user_states[user_id]["state"] = "alert_awaiting_price"
-                    msg = (
-                        f"✅ رمزارز انتخاب شده: **{asset_key}**\n\n"
-                        f"💰 حالا **قیمت هدف** را به تومان وارد کنید:\n"
-                        f"(فقط عدد، مثلاً: `5000000000`)"
-                    ) + footer_text()
+                    msg = f"✅ رمزارز انتخاب شده: **{asset_key}**\n\n💰 حالا **قیمت هدف** را به تومان وارد کنید:\n(فقط عدد، مثلاً: `5000000000`)" + footer_text()
                     await message.reply(msg)
                 else:
                     await message.reply(
-                        f"❌ دارایی **{asset_key}** یافت نشد.\n"
-                        "لطفاً نام معتبر وارد کنید یا از دکمه‌های موجود استفاده کنید." + footer_text(),
+                        f"❌ دارایی **{asset_key}** یافت نشد.\nلطفاً نام معتبر وارد کنید یا از دکمه‌های موجود استفاده کنید." + footer_text(),
                         components=alert_asset_category_keyboard()
                     )
             return
@@ -755,17 +748,13 @@ async def on_message(message: Message):
                 data["amount"] = amount
                 user_states[user_id]["state"] = "convert_awaiting_to"
                 from_name = get_asset_display_name(data["from_asset"])
-                msg = (
-                    f"✅ مقدار: **{format_price(amount)} {from_name}**\n\n"
-                    f"🔄 حالا ارز **مقصد** را انتخاب کنید:"
-                ) + footer_text()
+                msg = f"✅ مقدار: **{format_price(amount)} {from_name}**\n\n🔄 حالا ارز **مقصد** را انتخاب کنید:" + footer_text()
                 await message.reply(msg, components=convert_to_keyboard(data["from_asset"]))
             except ValueError:
                 await message.reply("❌ لطفاً یک عدد معتبر ارسال کنید (مثلاً 100)." + footer_text())
             return
 
     if text == '/start':
-        # 🔴 متن خوش‌آمدگویی حرفه‌ای
         members_count = len(bot_users)
         welcome_text = (
             f"سلام {message.author.first_name} عزیز! 👋\n\n"
@@ -782,34 +771,23 @@ async def on_message(message: Message):
             "━━━━━━━━━━━━━━━━━━\n\n"
             "👇 از منوی زیر شروع کن:"
         ) + footer_text()
-
         markup = main_menu_keyboard()
-
-        # اگر لینک تصویر تنظیم شده بود، با تصویر بفرست
         if WELCOME_IMAGE_URL and WELCOME_IMAGE_URL.strip():
             try:
-                await message.reply_photo(
-                    photo=WELCOME_IMAGE_URL,
-                    caption=welcome_text,
-                    components=markup
-                )
+                await bot.send_photo(chat_id=user_id, photo=WELCOME_IMAGE_URL, caption=welcome_text, components=markup)
                 return
             except Exception as e:
                 print(f"Error sending welcome photo: {e}")
-                # اگر خطا داد، فقط متن رو بفرست
-        
         await message.reply(welcome_text, components=markup)
         return
 
     if text == '/menu':
         await show_main_menu(message)
         return
-
     if text == '/cancel':
         clear_state(user_id)
         await message.reply("✅ عملیات لغو شد.", components=main_menu_keyboard())
         return
-
     if text == '/list':
         try:
             response = requests.get(CRYPTO_API_URL, timeout=10)
@@ -832,7 +810,6 @@ async def on_message(message: Message):
             await message.reply("⚠️ خطا در دریافت لیست رمزارزها." + footer_text())
             print(f"Error fetching crypto list: {e}")
         return
-
     if text == '/myalerts':
         await show_my_alerts(message, user_id)
         return
@@ -843,7 +820,6 @@ async def on_message(message: Message):
         target_price = float(alert_match.group(2))
         direction_word = alert_match.group(3)
         direction = "above" if direction_word in ("بالا", "بیشتر") else "below"
-
         asset_upper = asset_key.upper()
         if asset_upper in FIAT_NAMES:
             asset_key = asset_upper
@@ -851,18 +827,15 @@ async def on_message(message: Message):
             pass
         else:
             asset_key = asset_upper
-
         current = get_current_price(asset_key)
         if not current:
             await message.reply(f"❌ دارایی **{asset_key}** یافت نشد." + footer_text())
             return
-        add_alert(user_id, asset_key, target_price, direction)
+        await add_alert(user_id, asset_key, target_price, direction)
         asset_name = get_asset_display_name(asset_key)
         direction_text = "بالا برود" if direction == "above" else "پایین بیاید"
         await message.reply(
-            f"✅ **هشدار ثبت شد!**\n\n"
-            f"🔔 {asset_name} → {format_price(target_price)} تومان ({direction_text})\n"
-            f"💰 قیمت فعلی: {format_price(current['price'])} تومان" + footer_text(),
+            f"✅ **هشدار ثبت شد!**\n\n🔔 {asset_name} → {format_price(target_price)} تومان ({direction_text})\n💰 قیمت فعلی: {format_price(current['price'])} تومان" + footer_text(),
             components=main_menu_keyboard()
         )
         return
@@ -880,7 +853,6 @@ async def on_message(message: Message):
             pass
         else:
             from_asset = from_asset.upper()
-
         if to_asset.upper() in ("TOMAN", "IRT", "تومان"):
             to_asset = "TOMAN"
         elif to_asset.upper() in FIAT_NAMES:
@@ -889,14 +861,12 @@ async def on_message(message: Message):
             pass
         else:
             to_asset = to_asset.upper()
-
         await do_convert(message, amount, from_asset, to_asset)
         return
 
     if text_upper in FIAT_NAMES:
         await process_fiat_and_reply(message, text_upper)
         return
-
     await process_crypto_and_reply(message, text_upper)
 
 
@@ -904,8 +874,6 @@ async def on_message(message: Message):
 async def on_callback(callback: CallbackQuery):
     data = callback.data
     user_id = get_user_id_from_callback(callback)
-
-    # اضافه کردن کاربر به لیست
     if user_id:
         bot_users.add(user_id)
 
@@ -913,7 +881,6 @@ async def on_callback(callback: CallbackQuery):
         clear_state(user_id)
         await show_main_menu(callback.message, edit=True)
         return
-
     if data == "MENU:CRYPTO":
         clear_state(user_id)
         text = "🪙 **ارز دیجیتال**\n\nیکی از رمزارزهای زیر را انتخاب کنید:"
@@ -922,19 +889,14 @@ async def on_callback(callback: CallbackQuery):
         except:
             await callback.message.reply(text + footer_text(), components=crypto_menu_keyboard())
         return
-
     if data == "MENU:FIAT":
         clear_state(user_id)
-        text = (
-            "💵 **ارزهای فیات**\n\n"
-            "یکی از ارزهای زیر را انتخاب کنید تا قیمت لحظه‌ای آن را ببینید:"
-        )
+        text = "💵 **ارزهای فیات**\n\nیکی از ارزهای زیر را انتخاب کنید تا قیمت لحظه‌ای آن را ببینید:"
         try:
             await callback.message.edit(text + footer_text(), components=fiat_menu_keyboard())
         except:
             await callback.message.reply(text + footer_text(), components=fiat_menu_keyboard())
         return
-
     if data == "MENU:GOLD":
         clear_state(user_id)
         text = "🥇 **طلا و سکه**\n\nیکی از گزینه‌ها را انتخاب کنید:"
@@ -943,11 +905,9 @@ async def on_callback(callback: CallbackQuery):
         except:
             await callback.message.reply(text + footer_text(), components=gold_menu_keyboard())
         return
-
     if data == "MENU:MYALERTS":
         await show_my_alerts(callback.message, user_id, edit=True)
         return
-
     if data == "MENU:LIST":
         try:
             response = requests.get(CRYPTO_API_URL, timeout=10)
@@ -973,50 +933,37 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.reply("⚠️ خطا." + footer_text())
             print(f"Error: {e}")
         return
-
     if data.startswith("CRYPTO:"):
         parts = data.split(":")
         if len(parts) >= 2:
-            symbol = parts[1]
-            await process_crypto_and_reply(callback.message, symbol)
+            await process_crypto_and_reply(callback.message, parts[1])
         return
-
     if data.startswith("FIAT:"):
         parts = data.split(":")
         if len(parts) >= 2:
-            symbol = parts[1]
-            await process_fiat_and_reply(callback.message, symbol)
+            await process_fiat_and_reply(callback.message, parts[1])
         return
-
     if data.startswith("GOLD:"):
         parts = data.split(":")
         if len(parts) >= 2:
-            asset = parts[1]
-            await process_gold_and_reply(callback.message, asset)
+            await process_gold_and_reply(callback.message, parts[1])
         return
-
     if data.startswith("DELALERT:"):
         parts = data.split(":")
         if len(parts) >= 2:
             asset = parts[1]
-            remove_alert(user_id, asset)
+            await remove_alert(user_id, asset)
             await callback.message.reply(f"✅ هشدار **{get_asset_display_name(asset)}** حذف شد." + footer_text())
             await show_my_alerts(callback.message, user_id, edit=True)
         return
-
     if data == "ALERT:NEW":
         clear_state(user_id)
-        text = (
-            "🔔 **ثبت هشدار قیمت**\n\n"
-            "می‌خواهید وقتی قیمت چه چیزی تغییر کرد به شما خبر بدم؟\n"
-            "دسته‌بندی مورد نظر را انتخاب کنید:"
-        ) + footer_text()
+        text = "🔔 **ثبت هشدار قیمت**\n\nمی‌خواهید وقتی قیمت چه چیزی تغییر کرد به شما خبر بدم؟\nدسته‌بندی مورد نظر را انتخاب کنید:" + footer_text()
         try:
             await callback.message.edit(text, components=alert_asset_category_keyboard())
         except:
             await callback.message.reply(text, components=alert_asset_category_keyboard())
         return
-
     if data.startswith("ALERT:CAT:"):
         parts = data.split(":")
         category = parts[2] if len(parts) >= 3 else None
@@ -1029,18 +976,12 @@ async def on_callback(callback: CallbackQuery):
         except:
             await callback.message.reply(text + footer_text(), components=alert_asset_list_keyboard(category))
         return
-
     if data == "ALERT:MANUAL":
         user_states[user_id] = {"state": "alert_awaiting_manual_asset", "data": {}}
         await callback.message.reply(
-            "✏️ **نام دارایی را وارد کنید:**\n\n"
-            "🔸 رمزارز: `BTC`\n"
-            "🔸 ارز فیات: `USD`\n"
-            "🔸 طلا/سکه: `coin_emami` یا `gold_18`\n\n"
-            "❌ برای لغو: `/cancel`" + footer_text()
+            "✏️ **نام دارایی را وارد کنید:**\n\n🔸 رمزارز: `BTC`\n🔸 ارز فیات: `USD`\n🔸 طلا/سکه: `coin_emami` یا `gold_18`\n\n❌ برای لغو: `/cancel`" + footer_text()
         )
         return
-
     if data.startswith("ALERT:SET:"):
         parts = data.split(":")
         asset = parts[2] if len(parts) >= 3 else None
@@ -1050,18 +991,12 @@ async def on_callback(callback: CallbackQuery):
         asset_name = get_asset_display_name(asset)
         current = get_current_price(asset)
         current_text = f"\n💰 قیمت فعلی: {format_price(current['price'])} تومان" if current else ""
-        text = (
-            f"✅ دارایی انتخاب شده: **{asset_name}**{current_text}\n\n"
-            f"🎯 حالا **قیمت هدف** را به تومان وارد کنید:\n"
-            f"(فقط عدد، مثلاً: `250000`)\n\n"
-            f"❌ برای لغو: `/cancel`"
-        ) + footer_text()
+        text = f"✅ دارایی انتخاب شده: **{asset_name}**{current_text}\n\n🎯 حالا **قیمت هدف** را به تومان وارد کنید:\n(فقط عدد، مثلاً: `250000`)\n\n❌ برای لغو: `/cancel`" + footer_text()
         try:
             await callback.message.edit(text)
         except:
             await callback.message.reply(text)
         return
-
     if data.startswith("ALERT:DIR:"):
         parts = data.split(":")
         direction = parts[2] if len(parts) >= 3 else None
@@ -1072,19 +1007,11 @@ async def on_callback(callback: CallbackQuery):
             return
         asset = user_states[user_id]["data"]["asset"]
         target_price = user_states[user_id]["data"]["target_price"]
-        add_alert(user_id, asset, target_price, direction)
+        await add_alert(user_id, asset, target_price, direction)
         clear_state(user_id)
         asset_name = get_asset_display_name(asset)
         direction_text = "بالا برود 📈" if direction == "above" else "پایین بیاید 📉"
-        text = (
-            f"✅ **هشدار با موفقیت ثبت شد!**\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"🔔 دارایی: **{asset_name}**\n"
-            f"🎯 قیمت هدف: **{format_price(target_price)} تومان**\n"
-            f"📊 شرط: وقتی قیمت {direction_text}\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"📩 به محض رسیدن به این قیمت، به شما اطلاع می‌دهم."
-        ) + footer_text()
+        text = f"✅ **هشدار با موفقیت ثبت شد!**\n━━━━━━━━━━━━━━━━━━\n🔔 دارایی: **{asset_name}**\n🎯 قیمت هدف: **{format_price(target_price)} تومان**\n📊 شرط: وقتی قیمت {direction_text}\n━━━━━━━━━━━━━━━━━━\n📩 به محض رسیدن به این قیمت، به شما اطلاع می‌دهم." + footer_text()
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton(text="🔔 هشدار جدید", callback_data="ALERT:NEW"), row=0)
         markup.add(InlineKeyboardButton(text="📋 هشدارهای من", callback_data="MENU:MYALERTS"), row=1)
@@ -1094,24 +1021,18 @@ async def on_callback(callback: CallbackQuery):
         except:
             await callback.message.reply(text, components=markup)
         return
-
     if data == "ALERT:CANCEL":
         clear_state(user_id)
         await callback.message.reply("❌ عملیات لغو شد." + footer_text(), components=main_menu_keyboard())
         return
-
     if data == "CONV:NEW":
         clear_state(user_id)
-        text = (
-            "🔄 **مبدل ارز**\n\n"
-            "مرحله ۱ از ۳: **از چه ارزی** می‌خواهید تبدیل کنید؟"
-        ) + footer_text()
+        text = "🔄 **مبدل ارز**\n\nمرحله ۱ از ۳: **از چه ارزی** می‌خواهید تبدیل کنید؟" + footer_text()
         try:
             await callback.message.edit(text, components=convert_from_keyboard())
         except:
             await callback.message.reply(text, components=convert_from_keyboard())
         return
-
     if data.startswith("CONV:FROM:"):
         parts = data.split(":")
         from_asset = parts[2] if len(parts) >= 3 else None
@@ -1119,18 +1040,12 @@ async def on_callback(callback: CallbackQuery):
             return
         user_states[user_id] = {"state": "convert_awaiting_amount", "data": {"from_asset": from_asset}}
         from_name = get_asset_display_name(from_asset)
-        text = (
-            f"✅ ارز مبدأ: **{from_name}**\n\n"
-            f"مرحله ۲ از ۳: **چه مقدار** می‌خواهید تبدیل کنید؟\n"
-            f"(فقط عدد، مثلاً: `100`)\n\n"
-            f"❌ برای لغو: `/cancel`"
-        ) + footer_text()
+        text = f"✅ ارز مبدأ: **{from_name}**\n\nمرحله ۲ از ۳: **چه مقدار** می‌خواهید تبدیل کنید؟\n(فقط عدد، مثلاً: `100`)\n\n❌ برای لغو: `/cancel`" + footer_text()
         try:
             await callback.message.edit(text)
         except:
             await callback.message.reply(text)
         return
-
     if data.startswith("CONV:TO:"):
         parts = data.split(":")
         to_asset = parts[2] if len(parts) >= 3 else None
@@ -1144,7 +1059,6 @@ async def on_callback(callback: CallbackQuery):
         clear_state(user_id)
         await do_convert(callback.message, amount, from_asset, to_asset)
         return
-
     if data == "CONV:CANCEL":
         clear_state(user_id)
         await callback.message.reply("❌ عملیات لغو شد." + footer_text(), components=main_menu_keyboard())
