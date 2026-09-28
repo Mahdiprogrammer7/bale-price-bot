@@ -19,6 +19,9 @@ GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gol
 ALERTS_FILE = 'alerts.json'
 
 PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
+
+# 🔴 لینک تصویر خوش‌آمدگویی از سایت دنیای اقتصاد
+WELCOME_IMAGE_URL = "https://cdn.donya-e-eqtesad.com/thumbnail/0TqL1zjwkORt/QHn8O9nsSzT8qCU7RegsN6Pbb5v74eEtbKeSOh05RaZum_w2CVKcVkt7TZyzEhnm/bitcoin-cryptocurrency-digital-money-golden-coin-technology-business-concept-scaled.jpg"
 # ==================================================
 
 
@@ -43,6 +46,7 @@ print("✅ Cloudflare Proxy override فعال شد!")
 bot = Bot(token=BOT_TOKEN)
 
 user_states = {}
+bot_users = set()  # برای شمارش کاربران
 
 POPULAR_CRYPTOS = ["BTC", "ETH", "USDT", "BNB", "SOL", "XRP", "ADA", "DOGE", "TRX", "TON"]
 POPULAR_FIATS = ["USD", "EUR", "AED", "TRY", "GBP", "IQD", "CNY", "JPY", "CAD", "AUD", "CHF", "SAR"]
@@ -298,10 +302,8 @@ def fetch_gold_data(asset_key: str):
 
 
 def get_current_price(asset_key: str):
-    # ✅ اصلاح: تومان به عنوان پایه محاسبه می‌شود (۱ تومان = ۱ تومان)
     if asset_key == "TOMAN":
         return {"symbol": "TOMAN", "price": 1.0}
-    
     if asset_key in GOLD_NAMES:
         return fetch_gold_data(asset_key)
     elif asset_key in FIAT_NAMES:
@@ -692,6 +694,9 @@ async def on_message(message: Message):
     text = message.content.strip()
     text_upper = text.upper()
 
+    # اضافه کردن کاربر به لیست (برای شمارش)
+    bot_users.add(user_id)
+
     if user_id in user_states:
         state = user_states[user_id]["state"]
         data = user_states[user_id]["data"]
@@ -760,13 +765,40 @@ async def on_message(message: Message):
             return
 
     if text == '/start':
+        # 🔴 متن خوش‌آمدگویی حرفه‌ای
+        members_count = len(bot_users)
         welcome_text = (
             f"سلام {message.author.first_name} عزیز! 👋\n\n"
-            "به ربات **قیمت لحظه‌ای ارز، طلا و رمزارز** خوش آمدید.\n\n"
-            "✨ **همه چیز با دکمه!**\n"
-            "نیازی به دونستن دستور خاصی نیست. از منوی زیر انتخاب کن:"
-        )
-        await message.reply(welcome_text + footer_text(), components=main_menu_keyboard())
+            "🌟 به ربات **نرخ آنلاین | ارز، طلا، رمزارز** خوش آمدی!\n\n"
+            "📊 مرجع اطلاع‌رسانی قیمت لحظه‌ای بازار\n\n"
+            f"👥 **تعداد کاربران:** {members_count} نفر\n\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "✨ **من می‌تونم بهت کمک کنم:**\n\n"
+            "🪙 قیمت لحظه‌ای رمزارزها\n"
+            "💵 قیمت دلار، یورو، درهم و...\n"
+            "🥇 قیمت طلا، سکه و مثقال\n"
+            "🔄 تبدیل ارز به ارز دیگه\n"
+            "🔔 هشدار قیمت خودکار\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "👇 از منوی زیر شروع کن:"
+        ) + footer_text()
+
+        markup = main_menu_keyboard()
+
+        # اگر لینک تصویر تنظیم شده بود، با تصویر بفرست
+        if WELCOME_IMAGE_URL and WELCOME_IMAGE_URL.strip():
+            try:
+                await message.reply_photo(
+                    photo=WELCOME_IMAGE_URL,
+                    caption=welcome_text,
+                    components=markup
+                )
+                return
+            except Exception as e:
+                print(f"Error sending welcome photo: {e}")
+                # اگر خطا داد، فقط متن رو بفرست
+        
+        await message.reply(welcome_text, components=markup)
         return
 
     if text == '/menu':
@@ -872,6 +904,10 @@ async def on_message(message: Message):
 async def on_callback(callback: CallbackQuery):
     data = callback.data
     user_id = get_user_id_from_callback(callback)
+
+    # اضافه کردن کاربر به لیست
+    if user_id:
+        bot_users.add(user_id)
 
     if data == "MENU:MAIN":
         clear_state(user_id)
