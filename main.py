@@ -32,7 +32,6 @@ PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
 WELCOME_IMAGE_URL = ""
 # ==================================================
 
-
 # ============================================================
 #       استفاده از Cloudflare Proxy برای دور زدن محدودیت IP
 # ============================================================
@@ -116,7 +115,7 @@ GOLD_NAMES = {
     "coin_quarter": "ربع سکه", "coin_gerami": "سکه گرمی",
 }
 
-# نگاشت نمادها به شناسه‌های CoinGecko
+# نگاشت نمادها به شناسه‌های CoinGecko (برای استفاده در حالت پشتیبان)
 COINGECKO_MAP = {
     "BTC": "bitcoin", "ETH": "ethereum", "USDT": "tether",
     "BNB": "binancecoin", "SOL": "solana", "XRP": "ripple",
@@ -309,16 +308,16 @@ async def is_favorite(chat_id, asset_key):
 
 
 # ============================================================
-# --- دریافت قیمت رمزارز از CoinGecko (API جهانی) ---
+# --- دریافت قیمت رمزارز (نوبیتکس + CoinGecko پشتیبان) ---
 # ============================================================
 
-# کش برای نرخ دلار (برای جلوگیری از درخواست‌های تکراری)
+# کش برای نرخ دلار (برای تبدیل در حالت پشتیبان)
 _usd_rate_cache = {"price": None, "timestamp": 0}
 _USD_CACHE_TTL = 300  # 5 دقیقه
 
 
 def _get_usd_to_toman():
-    """دریافت نرخ دلار به تومان با کش"""
+    """دریافت نرخ دلار به تومان با کش (برای حالت پشتیبان)"""
     now = time.time()
     if _usd_rate_cache["price"] and (now - _usd_rate_cache["timestamp"]) < _USD_CACHE_TTL:
         return _usd_rate_cache["price"]
@@ -332,20 +331,54 @@ def _get_usd_to_toman():
     except Exception as e:
         print(f"⚠️ Error fetching USD/IRT rate: {type(e).__name__}", flush=True)
 
-    # اگه کش قبلی داشت، ازش استفاده کن
     return _usd_rate_cache["price"]
 
 
 def fetch_crypto_data(symbol: str):
-    """دریافت قیمت رمزارز از CoinGecko و تبدیل به تومان"""
+    """
+    دریافت قیمت رمزارز:
+    1. تلاش برای دریافت از Nobitex (منبع اصلی و مستقیم به تومان)
+    2. در صورت خطا، استفاده از CoinGecko به عنوان پشتیبان
+    """
     symbol = symbol.strip().upper()
 
+    # ===== ۱. تلاش برای دریافت از Nobitex =====
+    try:
+        # نوبیتکس از جفت ارزهایی مثل BTCIRT استفاده می‌کند
+        market = f"{symbol}IRT"
+        url = "https://apiv2.nobitex.ir/market/stats"
+        params = {"srcCurrency": symbol.lower(), "dstCurrency": "rls"}
+        headers = {"User-Agent": "TraderBot/BalePriceBot-1.0"}
+
+        response = requests.get(url, params=params, headers=headers, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("status") == "ok":
+            stats = data.get("stats", {}).get(market)
+            if stats:
+                last_price_rial = stats.get("latest")
+                if last_price_rial:
+                    # تبدیل ریال به تومان (تقسیم بر 10)
+                    price_in_toman = float(last_price_rial) / 10
+                    change_24h = stats.get("dayChange")  # درصد تغییرات
+                    print(f"✅ Nobitex price for {symbol}: {price_in_toman:,.0f} تومان", flush=True)
+                    return {
+                        "symbol": symbol,
+                        "buy_price": price_in_toman,
+                        "sell_price": price_in_toman,
+                        "change": change_24h
+                    }
+    except Exception as e:
+        print(f"⚠️ Nobitex failed for {symbol}: {type(e).__name__}", flush=True)
+
+    # ===== ۲. حالت پشتیبان: CoinGecko =====
+    print(f"ℹ️ Falling back to CoinGecko for {symbol}...", flush=True)
     coin_id = COINGECKO_MAP.get(symbol)
     if not coin_id:
         print(f"⚠️ Symbol {symbol} not supported in CoinGecko map", flush=True)
         return None
 
-    # ۱. دریافت قیمت دلاری از CoinGecko
     try:
         url = "https://api.coingecko.com/api/v3/simple/price"
         params = {
@@ -367,21 +400,17 @@ def fetch_crypto_data(symbol: str):
 
         if usd_price is None:
             return None
-
     except Exception as e:
         print(f"⚠️ CoinGecko failed for {symbol}: {type(e).__name__}", flush=True)
         return None
 
-    # ۲. دریافت نرخ دلار به تومان
     usd_to_toman = _get_usd_to_toman()
     if not usd_to_toman:
         print(f"⚠️ Could not fetch USD/IRT rate for {symbol}", flush=True)
         return None
 
-    # ۳. تبدیل قیمت دلاری به تومان
     price_in_toman = float(usd_price) * float(usd_to_toman)
 
-    # ۴. برگرداندن داده‌ها در قالب مورد انتظار
     return {
         "symbol": symbol,
         "buy_price": price_in_toman,
