@@ -199,7 +199,7 @@ _sent_channel_message_ids = set()
 _channel_thread_started = False
 _checker_thread_started = False
 _user_lang_cache = {}
-_force_join_cache = {}  # {user_id: timestamp}
+_force_join_cache = {}  # {user_id: timestamp} - فقط کش کوتاه‌مدت تأیید عضویت
 
 # ============================================================
 #       دیتابیس
@@ -223,7 +223,28 @@ async def init_db():
         favorites_collection = db["favorites"]
         users_collection = db["users"]
         referrals_collection = db["referrals"]
-        print("✅ اتصال به MongoDB با موفقیت برقرار شد!", flush=True)
+
+        # Indexها باعث می‌شوند شناسایی کاربر و Queryهای پرتکرار سریع و پایدار بمانند.
+        # هر Index جداگانه مدیریت می‌شود تا اگر دیتای قدیمی duplicate داشت،
+        # کل اتصال دیتابیس به خاطر یک Index از کار نیفتد.
+        index_jobs = [
+            (users_collection, "chat_id", {"unique": True}),
+            (alerts_collection, [("chat_id", 1), ("asset", 1)], {"unique": True}),
+            (favorites_collection, [("chat_id", 1), ("asset", 1)], {"unique": True}),
+            (referrals_collection, [("referrer", 1), ("referred", 1)], {"unique": True}),
+        ]
+        for collection, keys, options in index_jobs:
+            try:
+                await collection.create_index(keys, **options)
+            except Exception as index_error:
+                print(f"⚠️ Index warning ({getattr(collection, 'name', 'unknown')}): {index_error}", flush=True)
+                # اگر دیتای قدیمی duplicate بود، یک Index معمولی هم می‌سازیم.
+                try:
+                    await collection.create_index(keys)
+                except Exception as fallback_error:
+                    print(f"⚠️ Fallback index failed: {fallback_error}", flush=True)
+
+        print("✅ اتصال به MongoDB با موفقیت برقرار شد + Indexها بررسی شدند!", flush=True)
         return True
     except Exception as e:
         print(f"❌ خطا در اتصال به MongoDB: {e}", flush=True)
@@ -463,25 +484,46 @@ async def is_favorite(chat_id, asset_key):
 
 
 # --- عضویت اجباری ---
-async def check_channel_membership(user_id):
-    """بررسی عضویت کاربر در کانال با استفاده از Bot API"""
+async def check_channel_membership(user_id, use_cache=True):
+    """بررسی واقعی عضویت کاربر در کانال.
+
+    نکته امنیتی: در صورت خطای API هرگز کاربر را عضو فرض نمی‌کنیم.
+    برای دکمه «بررسی عضویت» کش عمداً دور زده می‌شود تا نتیجه تازه باشد.
+    """
+    user_id = str(user_id)
     now = time.time()
-    # کش 5 دقیقه‌ای برای جلوگیری از درخواست تکراری
-    if user_id in _force_join_cache and (now - _force_join_cache[user_id]) < 300:
-        return True  # اگه تو کش بود یعنی قبلاً تأیید شده
+
+    # کش کوتاه‌مدت فقط برای کاهش فشار API؛ دکمه Verify کش را دور می‌زند.
+    if use_cache and user_id in _force_join_cache:
+        cached_at = _force_join_cache[user_id]
+        if (now - cached_at) < 60:
+            return True
+        _force_join_cache.pop(user_id, None)
+
     try:
         response = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=int(user_id))
-        if response and hasattr(response, 'status'):
-            status = response.status
-            if status in ['member', 'administrator', 'creator']:
-                _force_join_cache[user_id] = now
-                return True
-        return False
+        status = getattr(response, 'status', None)
+        is_member = status in ['member', 'administrator', 'creator']
+
+        if is_member:
+            _force_join_cache[user_id] = now
+        else:
+            # اگر کاربر عضو نیست، نتیجه قبلی را هم حذف کن.
+            _force_join_cache.pop(user_id, None)
+
+        print(f"🔎 Force Join | user={user_id} | status={status} | member={is_member}", flush=True)
+        return is_member
+
     except Exception as e:
-        print(f"⚠️ check membership error: {e}", flush=True)
-        # در صورت خطا، اجازه دسترسی می‌دهیم (محافظه‌کارانه)
-        _force_join_cache[user_id] = now
-        return True
+        # Fail-closed: خطای بررسی نباید باعث دور زدن عضویت اجباری شود.
+        _force_join_cache.pop(user_id, None)
+        print(f"❌ check membership error | user={user_id} | {type(e).__name__}: {e}", flush=True)
+        return False
+
+
+def clear_force_join_cache(user_id):
+    """حذف نتیجه کش عضویت برای بررسی مجدد واقعی."""
+    _force_join_cache.pop(str(user_id), None)
 
 
 # --- قیمت‌ها ---
@@ -1481,16 +1523,26 @@ async def on_message(message: Message):
     # ============================================================
     #       بررسی عضویت اجباری (Force Join)
     # ============================================================
-    # فقط برای کاربرانی که ثبت‌نام کردن
-    if text not in ['/start', '/language'] and user_id not in user_states:
-        user = await get_user(user_id)
-        if user:
+    # کاربر جدید هم قبل از شروع ثبت‌نام باید عضو کانال باشد.
+    # اگر کاربر در مرحله ثبت‌نام است ولی هنوز عضو نشده، ادامه ثبت‌نام متوقف می‌شود.
+    existing_user = await get_user(user_id)
+    if existing_user:
+        is_member = await check_channel_membership(user_id)
+        if not is_member:
+            lang = existing_user.get("language", "fa")
+            await message.reply(
+                t("force_join_title", lang) + "\n\n" + t("force_join_text", lang, channel=CHANNEL_ID),
+                components=force_join_keyboard(lang)
+            )
+            return
+    elif user_id in user_states:
+        pending_state = user_states[user_id].get("state")
+        if pending_state in {"awaiting_language", "awaiting_name", "awaiting_phone"}:
             is_member = await check_channel_membership(user_id)
             if not is_member:
-                lang = await get_user_language(user_id)
                 await message.reply(
-                    t("force_join_title", lang) + "\n\n" + t("force_join_text", lang, channel=CHANNEL_ID),
-                    components=force_join_keyboard(lang)
+                    t("force_join_title", "fa") + "\n\n" + t("force_join_text", "fa", channel=CHANNEL_ID),
+                    components=force_join_keyboard("fa")
                 )
                 return
 
@@ -1501,6 +1553,15 @@ async def on_message(message: Message):
         state = user_states[user_id]["state"]
         data = user_states[user_id].get("data", {})
         lang = data.get("lang", "fa")
+
+        if state == "awaiting_channel_join":
+            # هیچ متن مستقیمی نباید ثبت‌نام را جلو ببرد؛ کاربر باید Verify را بزند.
+            await message.reply(
+                t("force_join_title", "fa") + "\n\n" +
+                t("force_join_text", "fa", channel=CHANNEL_ID),
+                components=force_join_keyboard("fa")
+            )
+            return
 
         if state == "awaiting_name":
             if len(text) < 3:
@@ -1593,7 +1654,26 @@ async def on_message(message: Message):
                 return
             await show_main_menu(message, user_id)
         else:
-            user_states[user_id] = {"state": "awaiting_language", "data": {"referred_by": referred_by}}
+            # کاربر جدید: اول عضویت کانال، بعد ثبت‌نام.
+            # referred_by را در RAM نگه می‌داریم تا بعد از عضویت و تکمیل ثبت‌نام از بین نرود.
+            clear_force_join_cache(user_id)
+            is_member = await check_channel_membership(user_id, use_cache=False)
+            if not is_member:
+                user_states[user_id] = {
+                    "state": "awaiting_channel_join",
+                    "data": {"referred_by": referred_by}
+                }
+                await message.reply(
+                    t("force_join_title", "fa") + "\n\n" +
+                    t("force_join_text", "fa", channel=CHANNEL_ID),
+                    components=force_join_keyboard("fa")
+                )
+                return
+
+            user_states[user_id] = {
+                "state": "awaiting_language",
+                "data": {"referred_by": referred_by}
+            }
             await message.reply(t("choose_language", "fa"), components=language_keyboard())
         return
 
@@ -1608,6 +1688,19 @@ async def on_message(message: Message):
         return
 
     if text == '/language':
+        user = await get_user(user_id)
+        if not user:
+            # کاربر جدید باید از مسیر /start و عضویت کانال وارد شود.
+            user_states[user_id] = {
+                "state": "awaiting_channel_join",
+                "data": user_states.get(user_id, {}).get("data", {})
+            }
+            await message.reply(
+                t("force_join_title", "fa") + "\n\n" +
+                t("force_join_text", "fa", channel=CHANNEL_ID),
+                components=force_join_keyboard("fa")
+            )
+            return
         user_states[user_id] = {"state": "changing_language", "data": {}}
         await message.reply(t("choose_language", "fa") + " / " + t("choose_language", "en"), components=language_keyboard())
         return
@@ -1735,6 +1828,97 @@ async def on_callback(callback: CallbackQuery):
     except:
         return
 
+    # ============================================================
+    # Force Join باید قبل از هر Callback مربوط به ثبت‌نام اجرا شود.
+    # این ترتیب جلوی دور زدن عضویت با کلیک روی LANG را می‌گیرد.
+    # ============================================================
+    if data == "FORCEJOIN:VERIFY":
+        clear_force_join_cache(user_id)
+        user = await get_user(user_id)
+        pending = user_states.get(user_id, {})
+        pending_data = pending.get("data", {})
+
+        is_member = await check_channel_membership(user_id, use_cache=False)
+        if not is_member:
+            lang = user.get("language", "fa") if user else "fa"
+            try:
+                await callback.message.edit(
+                    t("force_join_not_member", lang),
+                    components=force_join_keyboard(lang)
+                )
+            except:
+                await callback.message.reply(
+                    t("force_join_not_member", lang),
+                    components=force_join_keyboard(lang)
+                )
+            return
+
+        # کاربر جدیدی که هنوز در users نیست: بعد از تأیید عضویت وارد ثبت‌نام می‌شود.
+        if not user:
+            referred_by = pending_data.get("referred_by")
+            user_states[user_id] = {
+                "state": "awaiting_language",
+                "data": {"referred_by": referred_by}
+            }
+            try:
+                await callback.message.edit(
+                    t("choose_language", "fa"),
+                    components=language_keyboard()
+                )
+            except:
+                await callback.message.reply(
+                    t("choose_language", "fa"),
+                    components=language_keyboard()
+                )
+            return
+
+        # کاربر قدیمی: بعد از تأیید عضویت مستقیم وارد منوی اصلی می‌شود.
+        clear_state(user_id)
+        await show_main_menu(callback.message, user_id, edit=True)
+        return
+
+    # ============================================================
+    # محافظت از تمام Callbackها برای کاربران ثبت‌نام‌شده
+    # اگر کاربر بعداً از کانال خارج شده باشد، حتی با دکمه‌های قدیمی
+    # هم نباید بتواند از قابلیت‌های ربات استفاده کند.
+    # ============================================================
+    existing_user = await get_user(user_id)
+    if existing_user:
+        is_member = await check_channel_membership(user_id)
+        if not is_member:
+            lang = existing_user.get("language", "fa")
+            try:
+                await callback.message.edit(
+                    t("force_join_title", lang) + "\n\n" +
+                    t("force_join_text", lang, channel=CHANNEL_ID),
+                    components=force_join_keyboard(lang)
+                )
+            except:
+                try:
+                    await callback.message.reply(
+                        t("force_join_title", lang) + "\n\n" +
+                        t("force_join_text", lang, channel=CHANNEL_ID),
+                        components=force_join_keyboard(lang)
+                    )
+                except:
+                    pass
+            return
+
+    # کاربر جدیدی که هنوز عضو نشده، حق عبور از مرحله Force Join را ندارد.
+    user = existing_user
+    if not user and data.startswith("LANG:"):
+        pending = user_states.get(user_id, {})
+        if pending.get("state") != "awaiting_language":
+            try:
+                await callback.message.edit(
+                    t("force_join_title", "fa") + "\n\n" +
+                    t("force_join_text", "fa", channel=CHANNEL_ID),
+                    components=force_join_keyboard("fa")
+                )
+            except:
+                pass
+            return
+
     # انتخاب / تغییر زبان
     if data.startswith("LANG:"):
         new_lang = data.split(":")[1]
@@ -1758,26 +1942,6 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit(t("welcome_new", new_lang))
         except:
             await callback.message.reply(t("welcome_new", new_lang))
-        return
-
-    # بررسی عضویت (Force Join)
-    if data == "FORCEJOIN:VERIFY":
-        user = await get_user(user_id)
-        lang = user.get("language", "fa") if user else "fa"
-        is_member = await check_channel_membership(user_id)
-        if is_member:
-            await show_main_menu(callback.message, user_id, edit=True)
-        else:
-            try:
-                await callback.message.edit(
-                    t("force_join_not_member", lang),
-                    components=force_join_keyboard(lang)
-                )
-            except:
-                await callback.message.reply(
-                    t("force_join_not_member", lang),
-                    components=force_join_keyboard(lang)
-                )
         return
 
     user = await get_user(user_id)
