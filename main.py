@@ -24,7 +24,7 @@ GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gol
 
 # 📢 کانال اطلاع‌رسانی
 CHANNEL_ID = "@nabz_mediaa"
-CHANNEL_POST_INTERVAL = 120  # هر 1 ساعت
+CHANNEL_POST_INTERVAL = 3600  # هر 1 ساعت
 CHANNEL_POST_ENABLED = True
 
 # ✅ پروکسی (روی Render باید True باشه)
