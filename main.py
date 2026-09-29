@@ -24,7 +24,7 @@ GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gol
 
 # 📢 کانال اطلاع‌رسانی
 CHANNEL_ID = "@nabz_mediaa"
-CHANNEL_POST_INTERVAL = 3600  # هر 1 ساعت
+CHANNEL_POST_INTERVAL = 120  # هر 1 ساعت
 CHANNEL_POST_ENABLED = True
 
 # ✅ پروکسی (روی Render باید True باشه)
@@ -873,32 +873,82 @@ async def alert_checker_async():
 
 
 # ============================================================
-# --- کانال اطلاع‌رسانی ---
+# --- کانال اطلاع‌رسانی (اصلاح‌شده) ---
 # ============================================================
 
 def build_channel_post():
-    lines = ["📊 **نرخ لحظه‌ای بازار**", "━━━━━━━━━━━━━━━━━━", "💵 **ارزهای فیات:**"]
+    """ساخت متن پست کانال با همه بخش‌ها"""
+    lines = ["📊 **نرخ لحظه‌ای بازار**", "━━━━━━━━━━━━━━━━━━"]
+
+    # ===== ارزهای فیات =====
+    lines.append("💵 **ارزهای فیات:**")
+    fiat_found = False
     for sym in ["USD", "EUR", "AED", "TRY"]:
-        data = fetch_fiat_data(sym)
-        if data and data.get("price"):
-            name = FIAT_NAMES.get(sym, sym)
-            lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
+        try:
+            data = fetch_fiat_data(sym)
+            if data and data.get("price"):
+                name = FIAT_NAMES.get(sym, sym)
+                lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
+                fiat_found = True
+        except Exception as e:
+            print(f"Error fetching fiat {sym}: {e}", flush=True)
+    if not fiat_found:
+        lines.append("  ⚠️ در دسترس نیست")
     lines.append("")
+
+    # ===== طلا و سکه =====
     lines.append("🥇 **طلا و سکه:**")
+    gold_found = False
     for asset in ["gold_18", "coin_emami", "coin_half"]:
-        data = fetch_gold_data(asset)
-        if data and data.get("price"):
-            name = GOLD_NAMES.get(asset, asset)
-            lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
+        try:
+            data = fetch_gold_data(asset)
+            if data and data.get("price"):
+                name = GOLD_NAMES.get(asset, asset)
+                lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
+                gold_found = True
+        except Exception as e:
+            print(f"Error fetching gold {asset}: {e}", flush=True)
+    if not gold_found:
+        lines.append("  ⚠️ در دسترس نیست")
     lines.append("")
+
+    # ===== رمزارزها =====
     lines.append("🪙 **رمزارزها:**")
+    crypto_found = False
     for sym in ["BTC", "ETH", "USDT"]:
-        data = fetch_crypto_data(sym)
-        if data and data.get("buy_price"):
-            lines.append(f"  • {sym}: **{format_price(data['buy_price'])} تومان**")
+        try:
+            data = fetch_crypto_data(sym)
+            if data and data.get("buy_price"):
+                price_val = data['buy_price']
+                # فرمت‌دهی هوشمند برای اعداد بزرگ
+                try:
+                    price_num = float(price_val)
+                    if price_num >= 1_000_000_000_000:
+                        formatted = f"{price_num / 1_000_000_000_000:,.2f} همت"
+                    elif price_num >= 1_000_000_000:
+                        formatted = f"{price_num / 1_000_000_000:,.2f} میلیارد"
+                    elif price_num >= 1_000_000:
+                        formatted = f"{price_num / 1_000_000:,.2f} میلیون"
+                    else:
+                        formatted = format_price(price_num)
+                except:
+                    formatted = format_price(price_val)
+                lines.append(f"  • {sym}: **{formatted} تومان**")
+                crypto_found = True
+            else:
+                lines.append(f"  • {sym}: ⚠️ در دسترس نیست")
+        except Exception as e:
+            print(f"Error fetching crypto {sym}: {e}", flush=True)
+            lines.append(f"  • {sym}: ⚠️ خطا")
+    if not crypto_found:
+        lines.append("  ⚠️ هیچ رمزارزی در دسترس نیست")
+
     lines.append("")
     lines.append("━━━━━━━━━━━━━━━━━━")
     lines.append(f"🕐 {time.strftime('%Y-%m-%d %H:%M')}")
+    lines.append("")
+    lines.append("📢 @nabz_mediaa")
+
     return "\n".join(lines)
 
 
