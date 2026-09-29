@@ -22,7 +22,12 @@ CRYPTO_API_URL = 'https://api.abantether.com/api/v1/manager/otc/ticker'
 FIAT_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/fiat.json'
 GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gold.json'
 
-# ✅ تنظیمات پروکسی - اگه خطای شبکه گرفتی، USE_PROXY رو True کن
+# 📢 کانال اطلاع‌رسانی
+CHANNEL_ID = "@nabz_mediaa"
+CHANNEL_POST_INTERVAL = 3600  # هر 1 ساعت
+CHANNEL_POST_ENABLED = True
+
+# ✅ پروکسی (روی Render باید True باشه)
 USE_PROXY = True
 PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
 WELCOME_IMAGE_URL = ""
@@ -30,7 +35,7 @@ WELCOME_IMAGE_URL = ""
 
 
 # ============================================================
-#       استفاده از Cloudflare Proxy (فقط اگه USE_PROXY = True)
+#       استفاده از Cloudflare Proxy برای دور زدن محدودیت IP
 # ============================================================
 if USE_PROXY:
     _original_aiohttp_request = aiohttp.ClientSession._request
@@ -52,19 +57,25 @@ else:
 bot = Bot(token=BOT_TOKEN)
 
 user_states = {}
-bot_users = set()
+MAIN_LOOP = None
+CHANNEL_NUMERIC_ID = None
+BOT_ID = None
+_sent_channel_message_ids = set()
+_channel_thread_started = False
+_checker_thread_started = False
 
 # ============================================================
 #       اتصال به دیتابیس MongoDB
 # ============================================================
 db_client = None
 alerts_collection = None
+favorites_collection = None
 
 async def init_db():
-    global db_client, alerts_collection
+    global db_client, alerts_collection, favorites_collection
     print(f"🔍 DEBUG: init_db called. MONGO_URI starts with: {MONGO_URI[:30] if MONGO_URI else 'EMPTY'}", flush=True)
     if not MONGO_URI:
-        print("⚠️ MONGO_URI تنظیم نشده است. از فایل alerts.json استفاده می‌شود.", flush=True)
+        print("⚠️ MONGO_URI تنظیم نشده است. از فایل‌های JSON استفاده می‌شود.", flush=True)
         return False
     try:
         db_client = AsyncIOMotorClient(
@@ -75,6 +86,7 @@ async def init_db():
         await db_client.admin.command('ping')
         db = db_client["bale_bot_db"]
         alerts_collection = db["alerts"]
+        favorites_collection = db["favorites"]
         print("✅ اتصال به MongoDB با موفقیت برقرار شد!", flush=True)
         return True
     except Exception as e:
@@ -160,7 +172,9 @@ def get_asset_display_name(asset_key):
     return asset_key
 
 
-# --- توابع دیتابیس ---
+# ============================================================
+# --- توابع دیتابیس: هشدارها ---
+# ============================================================
 
 async def add_alert(chat_id, asset_key, target_price, direction):
     if alerts_collection is not None:
@@ -224,7 +238,69 @@ async def get_all_alerts():
             return []
 
 
+# ============================================================
+# --- توابع دیتابیس: علاقه‌مندی‌ها ---
+# ============================================================
+
+async def add_favorite(chat_id, asset_key):
+    if favorites_collection is not None:
+        existing = await favorites_collection.find_one({"chat_id": str(chat_id), "asset": asset_key})
+        if existing is None:
+            await favorites_collection.insert_one({"chat_id": str(chat_id), "asset": asset_key, "created_at": time.time()})
+            return True
+        return False
+    else:
+        favorites = []
+        try:
+            with open('favorites.json', 'r', encoding='utf-8') as f:
+                favorites = json.load(f)
+        except:
+            pass
+        exists = any(f["chat_id"] == str(chat_id) and f["asset"] == asset_key for f in favorites)
+        if not exists:
+            favorites.append({"chat_id": str(chat_id), "asset": asset_key, "created_at": time.time()})
+            with open('favorites.json', 'w', encoding='utf-8') as f:
+                json.dump(favorites, f, ensure_ascii=False, indent=2)
+            return True
+        return False
+
+
+async def remove_favorite(chat_id, asset_key):
+    if favorites_collection is not None:
+        await favorites_collection.delete_one({"chat_id": str(chat_id), "asset": asset_key})
+    else:
+        try:
+            with open('favorites.json', 'r', encoding='utf-8') as f:
+                favorites = json.load(f)
+            favorites = [f for f in favorites if not (f["chat_id"] == str(chat_id) and f["asset"] == asset_key)]
+            with open('favorites.json', 'w', encoding='utf-8') as f:
+                json.dump(favorites, f, ensure_ascii=False, indent=2)
+        except:
+            pass
+
+
+async def get_user_favorites(chat_id):
+    if favorites_collection is not None:
+        cursor = favorites_collection.find({"chat_id": str(chat_id)})
+        docs = await cursor.to_list(length=None)
+        return [d["asset"] for d in docs]
+    else:
+        try:
+            with open('favorites.json', 'r', encoding='utf-8') as f:
+                favorites = json.load(f)
+            return [f["asset"] for f in favorites if f["chat_id"] == str(chat_id)]
+        except:
+            return []
+
+
+async def is_favorite(chat_id, asset_key):
+    favs = await get_user_favorites(chat_id)
+    return asset_key in favs
+
+
+# ============================================================
 # --- دریافت قیمت‌ها ---
+# ============================================================
 
 def fetch_crypto_data(symbol: str):
     symbol = symbol.strip().upper()
@@ -382,8 +458,9 @@ def main_menu_keyboard():
     markup.add(InlineKeyboardButton(text="💵 ارزهای فیات", callback_data="MENU:FIAT"), row=0)
     markup.add(InlineKeyboardButton(text="🥇 طلا و سکه", callback_data="MENU:GOLD"), row=1)
     markup.add(InlineKeyboardButton(text="🔄 مبدل ارز", callback_data="CONV:NEW"), row=1)
+    markup.add(InlineKeyboardButton(text="⭐ علاقه‌مندی‌ها", callback_data="FAV:VIEW"), row=2)
     markup.add(InlineKeyboardButton(text="🔔 هشدار قیمت", callback_data="ALERT:NEW"), row=2)
-    markup.add(InlineKeyboardButton(text="📋 هشدارهای من", callback_data="MENU:MYALERTS"), row=2)
+    markup.add(InlineKeyboardButton(text="📋 هشدارهای من", callback_data="MENU:MYALERTS"), row=3)
     markup.add(InlineKeyboardButton(text="📊 لیست رمزارزها", callback_data="MENU:LIST"), row=3)
     return markup
 
@@ -499,6 +576,51 @@ def alerts_list_keyboard(alerts, user_id):
     return markup
 
 
+def fav_category_keyboard():
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(text="🪙 رمزارز", callback_data="FAV:CAT:crypto"), row=0)
+    markup.add(InlineKeyboardButton(text="💱 ارز فیات", callback_data="FAV:CAT:fiat"), row=0)
+    markup.add(InlineKeyboardButton(text="🥇 طلا و سکه", callback_data="FAV:CAT:gold"), row=1)
+    markup.add(InlineKeyboardButton(text="📋 لیست علاقه‌مندی‌های من", callback_data="FAV:VIEW"), row=2)
+    markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=3)
+    return markup
+
+
+def fav_asset_list_keyboard(category, user_favs):
+    markup = InlineKeyboardMarkup()
+    if category == "crypto":
+        assets = POPULAR_CRYPTOS[:8]
+    elif category == "fiat":
+        assets = POPULAR_FIATS[:8]
+    elif category == "gold":
+        assets = POPULAR_GOLDS[:6]
+    else:
+        assets = []
+    pairs = [assets[i:i+2] for i in range(0, len(assets), 2)]
+    for row_idx, pair in enumerate(pairs):
+        for sym in pair:
+            name = GOLD_NAMES.get(sym, FIAT_NAMES.get(sym, sym))
+            if sym in user_favs:
+                label = f"✅ {name}"
+                callback = f"FAV:DEL:{sym}"
+            else:
+                label = f"➕ {name}"
+                callback = f"FAV:ADD:{sym}"
+            markup.add(InlineKeyboardButton(text=label, callback_data=callback), row=row_idx)
+    next_row = len(pairs)
+    markup.add(InlineKeyboardButton(text="🔙 بازگشت", callback_data="FAV:NEW"), row=next_row)
+    markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=next_row + 1)
+    return markup
+
+
+def fav_view_keyboard():
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(text="➕ افزودن دارایی جدید", callback_data="FAV:NEW"), row=0)
+    markup.add(InlineKeyboardButton(text="🔄 به‌روزرسانی قیمت‌ها", callback_data="FAV:VIEW"), row=1)
+    markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=2)
+    return markup
+
+
 # ============================================================
 #                       پردازش‌ها
 # ============================================================
@@ -511,6 +633,7 @@ async def show_main_menu(target, edit=False):
         "💵 **ارزهای فیات** — قیمت دلار، یورو، درهم و...\n"
         "🥇 **طلا و سکه** — قیمت طلا، سکه و مثقال\n"
         "🔄 **مبدل ارز** — تبدیل ارزها به یکدیگر\n"
+        "⭐ **علاقه‌مندی‌ها** — لیست شخصی شما\n"
         "🔔 **هشدار قیمت** — دریافت اطلاع‌رسانی خودکار\n"
         "📋 **هشدارهای من** — مشاهده هشدارهای فعال"
     ) + footer_text()
@@ -524,7 +647,7 @@ async def show_main_menu(target, edit=False):
     await target.reply(text, components=markup)
 
 
-async def process_crypto_and_reply(message, symbol):
+async def process_crypto_and_reply(message, symbol, user_id=None):
     data = fetch_crypto_data(symbol)
     if not data:
         await message.reply(f"❌ رمزارز **{symbol.upper()}** یافت نشد." + footer_text())
@@ -546,12 +669,17 @@ async def process_crypto_and_reply(message, symbol):
         except (ValueError, TypeError):
             pass
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(text="🔙 بازگشت به رمزارزها", callback_data="MENU:CRYPTO"), row=0)
-    markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=1)
+    if user_id:
+        if await is_favorite(user_id, data['symbol']):
+            markup.add(InlineKeyboardButton(text="⭐ حذف از علاقه‌مندی‌ها", callback_data=f"FAV:DEL:{data['symbol']}"), row=0)
+        else:
+            markup.add(InlineKeyboardButton(text="⭐ افزودن به علاقه‌مندی‌ها", callback_data=f"FAV:ADD:{data['symbol']}"), row=0)
+    markup.add(InlineKeyboardButton(text="🔙 بازگشت به رمزارزها", callback_data="MENU:CRYPTO"), row=1)
+    markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=2)
     await message.reply(result_text + footer_text(), components=markup)
 
 
-async def process_fiat_and_reply(message, symbol):
+async def process_fiat_and_reply(message, symbol, user_id=None):
     data = fetch_fiat_data(symbol)
     fiat_name = FIAT_NAMES.get(symbol.upper(), symbol.upper())
     if not data or data['price'] is None:
@@ -560,12 +688,17 @@ async def process_fiat_and_reply(message, symbol):
     price_str = format_price(data['price'])
     result_text = f"💵 **قیمت لحظه‌ای {fiat_name}**\n━━━━━━━━━━━━━━━━━━\n💰 قیمت: **{price_str} تومان**\n"
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(text="🔙 بازگشت به ارزهای فیات", callback_data="MENU:FIAT"), row=0)
-    markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=1)
+    if user_id:
+        if await is_favorite(user_id, symbol.upper()):
+            markup.add(InlineKeyboardButton(text="⭐ حذف از علاقه‌مندی‌ها", callback_data=f"FAV:DEL:{symbol.upper()}"), row=0)
+        else:
+            markup.add(InlineKeyboardButton(text="⭐ افزودن به علاقه‌مندی‌ها", callback_data=f"FAV:ADD:{symbol.upper()}"), row=0)
+    markup.add(InlineKeyboardButton(text="🔙 بازگشت به ارزهای فیات", callback_data="MENU:FIAT"), row=1)
+    markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=2)
     await message.reply(result_text + footer_text(), components=markup)
 
 
-async def process_gold_and_reply(message, asset_key):
+async def process_gold_and_reply(message, asset_key, user_id=None):
     data = fetch_gold_data(asset_key)
     gold_name = GOLD_NAMES.get(asset_key, asset_key)
     if not data or data['price'] is None:
@@ -574,8 +707,13 @@ async def process_gold_and_reply(message, asset_key):
     price_str = format_price(data['price'])
     result_text = f"🥇 **قیمت لحظه‌ای {gold_name}**\n━━━━━━━━━━━━━━━━━━\n💰 قیمت: **{price_str} تومان**\n"
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(text="🔙 بازگشت به طلا و سکه", callback_data="MENU:GOLD"), row=0)
-    markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=1)
+    if user_id:
+        if await is_favorite(user_id, asset_key):
+            markup.add(InlineKeyboardButton(text="⭐ حذف از علاقه‌مندی‌ها", callback_data=f"FAV:DEL:{asset_key}"), row=0)
+        else:
+            markup.add(InlineKeyboardButton(text="⭐ افزودن به علاقه‌مندی‌ها", callback_data=f"FAV:ADD:{asset_key}"), row=0)
+    markup.add(InlineKeyboardButton(text="🔙 بازگشت به طلا و سکه", callback_data="MENU:GOLD"), row=1)
+    markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=2)
     await message.reply(result_text + footer_text(), components=markup)
 
 
@@ -603,6 +741,41 @@ async def show_my_alerts(target, user_id, edit=False):
     lines.append("\n🗑 برای حذف، روی دکمه مربوطه کلیک کنید.")
     text = "\n".join(lines) + footer_text()
     markup = alerts_list_keyboard(alerts, user_id)
+    if edit:
+        try:
+            await target.edit(text, components=markup)
+            return
+        except:
+            pass
+    await target.reply(text, components=markup)
+
+
+async def show_favorites(target, user_id, edit=False):
+    favs = await get_user_favorites(user_id)
+    if not favs:
+        text = "⭐ **لیست علاقه‌مندی‌های شما خالیه!**\n\nبرای افزودن دارایی، روی دکمه زیر کلیک کنید:" + footer_text()
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(text="➕ افزودن دارایی", callback_data="FAV:NEW"), row=0)
+        markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=1)
+        if edit:
+            try:
+                await target.edit(text, components=markup)
+                return
+            except:
+                pass
+        await target.reply(text, components=markup)
+        return
+
+    lines = ["⭐ **لیست علاقه‌مندی‌های شما:**\n"]
+    for asset in favs:
+        name = get_asset_display_name(asset)
+        data = get_current_price(asset)
+        if data and data.get("price") is not None:
+            lines.append(f"🔸 **{name}** → {format_price(data['price'])} تومان")
+        else:
+            lines.append(f"🔸 **{name}** → ❌ نامشخص")
+    text = "\n".join(lines) + footer_text()
+    markup = fav_view_keyboard()
     if edit:
         try:
             await target.edit(text, components=markup)
@@ -648,6 +821,10 @@ async def do_convert(target, amount, from_asset, to_asset):
     await target.reply(result_text + footer_text(), components=markup)
 
 
+# ============================================================
+# --- چک‌کننده هشدارها ---
+# ============================================================
+
 async def alert_checker_async():
     print("🔔 Alert checker started!", flush=True)
     while True:
@@ -684,7 +861,10 @@ async def alert_checker_async():
                     except Exception as e:
                         print(f"Error sending alert: {e}", flush=True)
                     if alerts_collection is not None:
-                        await alerts_collection.delete_one({"_id": alert["_id"]})
+                        try:
+                            await alerts_collection.delete_one({"_id": alert["_id"]})
+                        except:
+                            pass
                     else:
                         await remove_alert(alert["chat_id"], alert["asset"])
         except Exception as e:
@@ -693,44 +873,176 @@ async def alert_checker_async():
 
 
 # ============================================================
+# --- کانال اطلاع‌رسانی ---
+# ============================================================
+
+def build_channel_post():
+    lines = ["📊 **نرخ لحظه‌ای بازار**", "━━━━━━━━━━━━━━━━━━", "💵 **ارزهای فیات:**"]
+    for sym in ["USD", "EUR", "AED", "TRY"]:
+        data = fetch_fiat_data(sym)
+        if data and data.get("price"):
+            name = FIAT_NAMES.get(sym, sym)
+            lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
+    lines.append("")
+    lines.append("🥇 **طلا و سکه:**")
+    for asset in ["gold_18", "coin_emami", "coin_half"]:
+        data = fetch_gold_data(asset)
+        if data and data.get("price"):
+            name = GOLD_NAMES.get(asset, asset)
+            lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
+    lines.append("")
+    lines.append("🪙 **رمزارزها:**")
+    for sym in ["BTC", "ETH", "USDT"]:
+        data = fetch_crypto_data(sym)
+        if data and data.get("buy_price"):
+            lines.append(f"  • {sym}: **{format_price(data['buy_price'])} تومان**")
+    lines.append("")
+    lines.append("━━━━━━━━━━━━━━━━━━")
+    lines.append(f"🕐 {time.strftime('%Y-%m-%d %H:%M')}")
+    return "\n".join(lines)
+
+
+def channel_poster():
+    global CHANNEL_NUMERIC_ID
+    print(f"ℹ️ channel_poster started, interval={CHANNEL_POST_INTERVAL}s", flush=True)
+    while True:
+        try:
+            time.sleep(CHANNEL_POST_INTERVAL)
+            if CHANNEL_POST_ENABLED and CHANNEL_ID:
+                post_text = build_channel_post()
+                print(f"🔍 در حال ارسال پست به کانال: {CHANNEL_ID}", flush=True)
+                try:
+                    if MAIN_LOOP is not None:
+                        future = asyncio.run_coroutine_threadsafe(bot.send_message(CHANNEL_ID, post_text), MAIN_LOOP)
+                        result = future.result(timeout=30)
+                        print(f"✅ پست کانال ارسال شد.", flush=True)
+                        try:
+                            if result and hasattr(result, 'message_id'):
+                                _sent_channel_message_ids.add(str(result.message_id))
+                                print(f"ℹ️ ذخیره شد message_id: {result.message_id}", flush=True)
+                        except:
+                            pass
+                        try:
+                            if result and hasattr(result, 'chat') and result.chat:
+                                CHANNEL_NUMERIC_ID = str(result.chat.id)
+                                print(f"ℹ️ CHANNEL_NUMERIC_ID = {CHANNEL_NUMERIC_ID}", flush=True)
+                        except:
+                            pass
+                except Exception as e:
+                    print(f"❌ خطا در ارسال پست کانال: {type(e).__name__}: {e}", flush=True)
+            else:
+                print("⚠️ کانال غیرفعال است.", flush=True)
+        except Exception as e:
+            print(f"Channel poster error: {e}", flush=True)
+
+
+# ============================================================
 #                       رویدادها
 # ============================================================
 
 @bot.event
 async def on_ready():
+    global MAIN_LOOP, BOT_ID, _channel_thread_started, _checker_thread_started
     print("=" * 60, flush=True)
     print("🚀 ON_READY CALLED!", flush=True)
     print("=" * 60, flush=True)
     print(f"ربات {bot.user.username} با موفقیت روشن شد و آماده به کار است!", flush=True)
+
+    MAIN_LOOP = asyncio.get_running_loop()
+    try:
+        BOT_ID = str(bot.user.id)
+        print(f"ℹ️ BOT_ID = {BOT_ID}", flush=True)
+    except:
+        pass
 
     try:
         db_ok = await init_db()
         if db_ok:
             print("✅ MongoDB متصل شد و آماده استفاده است!", flush=True)
         else:
-            print("❌ MongoDB متصل نشد! از فایل alerts.json استفاده می‌شود.", flush=True)
+            print("❌ MongoDB متصل نشد! از فایل‌های JSON استفاده می‌شود.", flush=True)
     except Exception as e:
         print(f"❌ خطا در init_db: {e}", flush=True)
         import traceback
         traceback.print_exc()
 
-    try:
-        asyncio.create_task(alert_checker_async())
-        print("✅ سیستم هشدار قیمت فعال شد!", flush=True)
-    except Exception as e:
-        print(f"❌ خطا در شروع alert_checker: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
+    if CHANNEL_POST_ENABLED and CHANNEL_ID:
+        print(f"ℹ️ کانال اطلاع‌رسانی فعال است: {CHANNEL_ID}", flush=True)
+
+    if not _checker_thread_started:
+        try:
+            asyncio.create_task(alert_checker_async())
+            _checker_thread_started = True
+            print("✅ سیستم هشدار قیمت فعال شد!", flush=True)
+        except Exception as e:
+            print(f"❌ خطا در شروع alert_checker: {e}", flush=True)
+
+    if not _channel_thread_started:
+        try:
+            channel_thread = threading.Thread(target=channel_poster, daemon=True)
+            channel_thread.start()
+            _channel_thread_started = True
+            print("✅ سیستم پست کانال فعال شد!", flush=True)
+        except Exception as e:
+            print(f"❌ خطا در شروع channel_poster: {e}", flush=True)
 
 
 @bot.event
 async def on_message(message: Message):
+    # فیلتر ۱: message_id در لیست پیام‌های ارسالی ما
+    try:
+        msg_id = str(getattr(message, 'message_id', ''))
+        if msg_id and msg_id in _sent_channel_message_ids:
+            return
+    except:
+        pass
+
+    # فیلتر ۲: نویسنده خود ربات
+    try:
+        if BOT_ID and message.author and str(getattr(message.author, 'id', '')) == BOT_ID:
+            return
+    except:
+        pass
+
+    # فیلتر ۳: فقط چت خصوصی
+    try:
+        chat_type = getattr(message.chat, 'type', None) if message.chat else None
+        if chat_type != 'private':
+            return
+    except:
+        return
+
+    # فیلتر ۴: chat.id با کانال یکسانه
+    try:
+        chat_id = str(getattr(message.chat, 'id', '')) if message.chat else ''
+        if CHANNEL_NUMERIC_ID and chat_id == CHANNEL_NUMERIC_ID:
+            return
+    except:
+        pass
+
+    if message.author is None:
+        return
     if message.author.is_bot:
         return
+    if not message.content:
+        return
+
+    # فیلتر ۵: محتوای پیام‌های خود ربات
+    content = message.content
+    if 'انتقادات و پیشنهادات:' in content:
+        return
+    if 'توسعه‌دهنده:' in content:
+        return
+    if '📊 **نرخ لحظه‌ای بازار**' in content:
+        return
+    if 'نرخ لحظه‌ای بازار' in content:
+        return
+    if content.count('تومان') >= 3:
+        return
+
     user_id = get_user_id_from_message(message)
     text = message.content.strip()
     text_upper = text.upper()
-    bot_users.add(user_id)
 
     if user_id in user_states:
         state = user_states[user_id]["state"]
@@ -770,7 +1082,7 @@ async def on_message(message: Message):
                     await message.reply(msg)
                 else:
                     await message.reply(
-                        f"❌ دارایی **{asset_key}** یافت نشد.\nلطفاً نام معتبر وارد کنید یا از دکمه‌های موجود استفاده کنید." + footer_text(),
+                        f"❌ دارایی **{asset_key}** یافت نشد.\nلطفاً نام معتبر وارد کنید." + footer_text(),
                         components=alert_asset_category_keyboard()
                     )
             return
@@ -788,18 +1100,17 @@ async def on_message(message: Message):
             return
 
     if text == '/start':
-        members_count = len(bot_users)
         welcome_text = (
             f"سلام {message.author.first_name} عزیز! 👋\n\n"
             "🌟 به ربات **نرخ آنلاین | ارز، طلا، رمزارز** خوش آمدی!\n\n"
             "📊 مرجع اطلاع‌رسانی قیمت لحظه‌ای بازار\n\n"
-            f"👥 **تعداد کاربران:** {members_count} نفر\n\n"
             "━━━━━━━━━━━━━━━━━━\n"
             "✨ **من می‌تونم بهت کمک کنم:**\n\n"
             "🪙 قیمت لحظه‌ای رمزارزها\n"
             "💵 قیمت دلار، یورو، درهم و...\n"
             "🥇 قیمت طلا، سکه و مثقال\n"
             "🔄 تبدیل ارز به ارز دیگه\n"
+            "⭐ ذخیره علاقه‌مندی‌ها\n"
             "🔔 هشدار قیمت خودکار\n"
             "━━━━━━━━━━━━━━━━━━\n\n"
             "👇 از منوی زیر شروع کن:"
@@ -845,6 +1156,9 @@ async def on_message(message: Message):
         return
     if text == '/myalerts':
         await show_my_alerts(message, user_id)
+        return
+    if text == '/fav' or text == '/favorites':
+        await show_favorites(message, user_id)
         return
 
     alert_match = re.match(r'^هشدار\s+([A-Za-z_0-9]+)\s+(\d+(?:\.\d+)?)\s+(بالا|پایین|بیشتر|کمتر)$', text, re.IGNORECASE)
@@ -898,17 +1212,25 @@ async def on_message(message: Message):
         return
 
     if text_upper in FIAT_NAMES:
-        await process_fiat_and_reply(message, text_upper)
+        await process_fiat_and_reply(message, text_upper, user_id)
         return
-    await process_crypto_and_reply(message, text_upper)
+    await process_crypto_and_reply(message, text_upper, user_id)
 
 
 @bot.event
 async def on_callback(callback: CallbackQuery):
     data = callback.data
     user_id = get_user_id_from_callback(callback)
-    if user_id:
-        bot_users.add(user_id)
+
+    # فقط چت خصوصی
+    try:
+        if hasattr(callback, 'message') and callback.message:
+            if hasattr(callback.message, 'chat') and callback.message.chat:
+                chat_type = getattr(callback.message.chat, 'type', None)
+                if chat_type != 'private':
+                    return
+    except:
+        return
 
     if data == "MENU:MAIN":
         clear_state(user_id)
@@ -969,18 +1291,82 @@ async def on_callback(callback: CallbackQuery):
     if data.startswith("CRYPTO:"):
         parts = data.split(":")
         if len(parts) >= 2:
-            await process_crypto_and_reply(callback.message, parts[1])
+            await process_crypto_and_reply(callback.message, parts[1], user_id)
         return
     if data.startswith("FIAT:"):
         parts = data.split(":")
         if len(parts) >= 2:
-            await process_fiat_and_reply(callback.message, parts[1])
+            await process_fiat_and_reply(callback.message, parts[1], user_id)
         return
     if data.startswith("GOLD:"):
         parts = data.split(":")
         if len(parts) >= 2:
-            await process_gold_and_reply(callback.message, parts[1])
+            await process_gold_and_reply(callback.message, parts[1], user_id)
         return
+
+    # --- علاقه‌مندی‌ها ---
+    if data == "FAV:VIEW":
+        clear_state(user_id)
+        await show_favorites(callback.message, user_id, edit=True)
+        return
+    if data == "FAV:NEW":
+        clear_state(user_id)
+        text = "⭐ **افزودن به علاقه‌مندی‌ها**\n\nاز کدام دسته می‌خواهید دارایی اضافه کنید؟" + footer_text()
+        try:
+            await callback.message.edit(text, components=fav_category_keyboard())
+        except:
+            await callback.message.reply(text, components=fav_category_keyboard())
+        return
+    if data.startswith("FAV:CAT:"):
+        parts = data.split(":")
+        category = parts[2] if len(parts) >= 3 else None
+        if not category:
+            return
+        cat_names = {"crypto": "رمزارز", "fiat": "ارز فیات", "gold": "طلا و سکه"}
+        user_favs = await get_user_favorites(user_id)
+        text = f"⭐ **افزودن {cat_names.get(category, category)}**\n\n✅ = در لیست شماست | ➕ = می‌تونی اضافه کنی" + footer_text()
+        try:
+            await callback.message.edit(text, components=fav_asset_list_keyboard(category, user_favs))
+        except:
+            await callback.message.reply(text, components=fav_asset_list_keyboard(category, user_favs))
+        return
+    if data.startswith("FAV:ADD:"):
+        parts = data.split(":")
+        asset = parts[2] if len(parts) >= 3 else None
+        if not asset:
+            return
+        added = await add_favorite(user_id, asset)
+        asset_name = get_asset_display_name(asset)
+        if added:
+            await callback.message.reply(f"✅ **{asset_name}** به علاقه‌مندی‌هات اضافه شد!" + footer_text())
+        else:
+            await callback.message.reply(f"ℹ️ **{asset_name}** قبلاً توی لیستت بود." + footer_text())
+        category = "crypto" if asset in POPULAR_CRYPTOS else "fiat" if asset in POPULAR_FIATS else "gold"
+        user_favs = await get_user_favorites(user_id)
+        text = f"⭐ **افزودن {category}**\n\n✅ = در لیست شماست | ➕ = می‌تونی اضافه کنی" + footer_text()
+        try:
+            await callback.message.edit(text, components=fav_asset_list_keyboard(category, user_favs))
+        except:
+            pass
+        return
+    if data.startswith("FAV:DEL:"):
+        parts = data.split(":")
+        asset = parts[2] if len(parts) >= 3 else None
+        if not asset:
+            return
+        await remove_favorite(user_id, asset)
+        asset_name = get_asset_display_name(asset)
+        await callback.message.reply(f"🗑 **{asset_name}** از علاقه‌مندی‌هات حذف شد." + footer_text())
+        category = "crypto" if asset in POPULAR_CRYPTOS else "fiat" if asset in POPULAR_FIATS else "gold"
+        user_favs = await get_user_favorites(user_id)
+        text = f"⭐ **افزودن {category}**\n\n✅ = در لیست شماست | ➕ = می‌تونی اضافه کنی" + footer_text()
+        try:
+            await callback.message.edit(text, components=fav_asset_list_keyboard(category, user_favs))
+        except:
+            pass
+        return
+
+    # --- هشدارها ---
     if data.startswith("DELALERT:"):
         parts = data.split(":")
         if len(parts) >= 2:
@@ -1058,6 +1444,8 @@ async def on_callback(callback: CallbackQuery):
         clear_state(user_id)
         await callback.message.reply("❌ عملیات لغو شد." + footer_text(), components=main_menu_keyboard())
         return
+
+    # --- مبدل ---
     if data == "CONV:NEW":
         clear_state(user_id)
         text = "🔄 **مبدل ارز**\n\nمرحله ۱ از ۳: **از چه ارزی** می‌خواهید تبدیل کنید؟" + footer_text()
