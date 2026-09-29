@@ -18,6 +18,7 @@ DEVELOPER_NAME = os.environ.get("DEVELOPER_NAME", "مهدی نجفی")
 FEEDBACK_ID = os.environ.get("FEEDBACK_ID", "@mahdi8iiii")
 MONGO_URI = os.environ.get("MONGO_URI", "")
 
+CRYPTO_API_URL = 'https://api.abantether.com/api/v1/manager/otc/ticker'
 FIAT_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/fiat.json'
 GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gold.json'
 
@@ -31,6 +32,7 @@ USE_PROXY = True
 PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
 WELCOME_IMAGE_URL = ""
 # ==================================================
+
 
 # ============================================================
 #       استفاده از Cloudflare Proxy برای دور زدن محدودیت IP
@@ -113,17 +115,6 @@ GOLD_NAMES = {
     "gold_18": "طلای ۱۸ عیار", "gold_24": "طلای ۲۴ عیار", "gold_miskal": "مثقال طلا",
     "coin_emami": "سکه امامی", "coin_bahar": "سکه بهار آزادی", "coin_half": "نیم سکه",
     "coin_quarter": "ربع سکه", "coin_gerami": "سکه گرمی",
-}
-
-# نگاشت نمادها به شناسه‌های CoinGecko (برای استفاده در حالت پشتیبان)
-COINGECKO_MAP = {
-    "BTC": "bitcoin", "ETH": "ethereum", "USDT": "tether",
-    "BNB": "binancecoin", "SOL": "solana", "XRP": "ripple",
-    "ADA": "cardano", "DOGE": "dogecoin", "TRX": "tron",
-    "TON": "the-open-network", "MATIC": "matic-network",
-    "DOT": "polkadot", "LTC": "litecoin", "AVAX": "avalanche-2",
-    "LINK": "chainlink", "SHIB": "shiba-inu", "DAI": "dai",
-    "ATOM": "cosmos", "UNI": "uniswap", "XLM": "stellar",
 }
 
 
@@ -308,115 +299,131 @@ async def is_favorite(chat_id, asset_key):
 
 
 # ============================================================
-# --- دریافت قیمت رمزارز (نوبیتکس + CoinGecko پشتیبان) ---
+# --- دریافت قیمت رمزارز از آبان‌تتر (با Nobitex پشتیبان) ---
 # ============================================================
 
-# کش برای نرخ دلار (برای تبدیل در حالت پشتیبان)
-_usd_rate_cache = {"price": None, "timestamp": 0}
-_USD_CACHE_TTL = 300  # 5 دقیقه
+# کش سراسری برای داده‌های آبان‌تتر (برای جلوگیری از درخواست‌های تکراری)
+_abantether_cache = {"data": None, "timestamp": 0}
+_ABAN_CACHE_TTL = 60  # 60 ثانیه کش
 
 
-def _get_usd_to_toman():
-    """دریافت نرخ دلار به تومان با کش (برای حالت پشتیبان)"""
+def _get_abantether_data():
+    """دریافت کل داده‌های آبان‌تتر با کش و Retry"""
     now = time.time()
-    if _usd_rate_cache["price"] and (now - _usd_rate_cache["timestamp"]) < _USD_CACHE_TTL:
-        return _usd_rate_cache["price"]
+    if _abantether_cache["data"] and (now - _abantether_cache["timestamp"]) < _ABAN_CACHE_TTL:
+        return _abantether_cache["data"]
 
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
+    # سه بار تلاش با timeout های مختلف
+    for attempt, timeout in enumerate([20, 25, 30]):
+        try:
+            response = requests.get(CRYPTO_API_URL, headers=headers, timeout=timeout)
+            response.raise_for_status()
+            data = response.json()
+            _abantether_cache["data"] = data
+            _abantether_cache["timestamp"] = now
+            print(f"✅ Abantether data fetched (attempt {attempt+1})", flush=True)
+            return data
+        except Exception as e:
+            print(f"⚠️ Abantether attempt {attempt+1} failed: {type(e).__name__}", flush=True)
+            time.sleep(2)
+
+    return None
+
+
+def _fetch_abantether(symbol):
+    """استخراج قیمت یک رمزارز از داده‌های آبان‌تتر"""
     try:
-        data = fetch_fiat_data("USD")
-        if data and data.get("price"):
-            _usd_rate_cache["price"] = data["price"]
-            _usd_rate_cache["timestamp"] = now
-            return data["price"]
+        market = _get_abantether_data()
+        if not market:
+            return None
+
+        markets_data = market.get("data", {}).get("markets", {})
+        if not markets_data:
+            return None
+
+        target_key = None
+        data = None
+
+        if isinstance(markets_data, dict):
+            if symbol in markets_data:
+                target_key = symbol
+            elif f"{symbol}IRT" in markets_data:
+                target_key = f"{symbol}IRT"
+            else:
+                for key in markets_data.keys():
+                    if symbol in key.upper():
+                        target_key = key
+                        break
+            if target_key:
+                data = markets_data[target_key]
+        elif isinstance(markets_data, list):
+            for item in markets_data:
+                item_symbol = str(item.get("symbol", "")).upper()
+                if item_symbol == symbol or item_symbol == f"{symbol}IRT" or symbol in item_symbol:
+                    target_key = item_symbol
+                    data = item
+                    break
+
+        if target_key and data:
+            buy_price = data.get("buy_price")
+            sell_price = data.get("sell_price")
+            change = None
+            for key in data.keys():
+                if "change" in key.lower() or "percent" in key.lower():
+                    change = data[key]
+                    break
+            return {"symbol": target_key, "buy_price": buy_price, "sell_price": sell_price, "change": change}
+        return None
     except Exception as e:
-        print(f"⚠️ Error fetching USD/IRT rate: {type(e).__name__}", flush=True)
+        print(f"⚠️ Abantether parse failed for {symbol}: {type(e).__name__}", flush=True)
+        return None
 
-    return _usd_rate_cache["price"]
 
-
-def fetch_crypto_data(symbol: str):
-    """
-    دریافت قیمت رمزارز:
-    1. تلاش برای دریافت از Nobitex (منبع اصلی و مستقیم به تومان)
-    2. در صورت خطا، استفاده از CoinGecko به عنوان پشتیبان
-    """
-    symbol = symbol.strip().upper()
-
-    # ===== ۱. تلاش برای دریافت از Nobitex =====
+def _fetch_nobitex(symbol):
+    """دریافت از Nobitex (پشتیبان)"""
     try:
-        # نوبیتکس از جفت ارزهایی مثل BTCIRT استفاده می‌کند
-        market = f"{symbol}IRT"
-        url = "https://apiv2.nobitex.ir/market/stats"
-        params = {"srcCurrency": symbol.lower(), "dstCurrency": "rls"}
-        headers = {"User-Agent": "TraderBot/BalePriceBot-1.0"}
-
-        response = requests.get(url, params=params, headers=headers, timeout=15)
+        url = f"https://api.nobitex.ir/v2/orderbook/{symbol}IRT"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
         data = response.json()
 
         if data.get("status") == "ok":
-            stats = data.get("stats", {}).get(market)
-            if stats:
-                last_price_rial = stats.get("latest")
-                if last_price_rial:
-                    # تبدیل ریال به تومان (تقسیم بر 10)
-                    price_in_toman = float(last_price_rial) / 10
-                    change_24h = stats.get("dayChange")  # درصد تغییرات
-                    print(f"✅ Nobitex price for {symbol}: {price_in_toman:,.0f} تومان", flush=True)
-                    return {
-                        "symbol": symbol,
-                        "buy_price": price_in_toman,
-                        "sell_price": price_in_toman,
-                        "change": change_24h
-                    }
+            last_price = data.get("lastTradePrice")
+            if last_price:
+                # قیمت به ریاله، تقسیم بر 10 برای تومان
+                price_in_toman = float(last_price) / 10
+                return {
+                    "symbol": symbol,
+                    "buy_price": price_in_toman,
+                    "sell_price": price_in_toman,
+                    "change": None
+                }
+        return None
     except Exception as e:
         print(f"⚠️ Nobitex failed for {symbol}: {type(e).__name__}", flush=True)
-
-    # ===== ۲. حالت پشتیبان: CoinGecko =====
-    print(f"ℹ️ Falling back to CoinGecko for {symbol}...", flush=True)
-    coin_id = COINGECKO_MAP.get(symbol)
-    if not coin_id:
-        print(f"⚠️ Symbol {symbol} not supported in CoinGecko map", flush=True)
         return None
 
-    try:
-        url = "https://api.coingecko.com/api/v3/simple/price"
-        params = {
-            "ids": coin_id,
-            "vs_currencies": "usd",
-            "include_24hr_change": "true"
-        }
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, params=params, headers=headers, timeout=15)
-        response.raise_for_status()
-        data = response.json()
 
-        if coin_id not in data:
-            print(f"⚠️ CoinGecko has no data for {symbol}", flush=True)
-            return None
+def fetch_crypto_data(symbol: str):
+    """دریافت قیمت رمزارز: اول آبان‌تتر، بعد Nobitex"""
+    symbol = symbol.strip().upper()
 
-        usd_price = data[coin_id].get("usd")
-        change_24h = data[coin_id].get("usd_24h_change")
+    # ۱. اول از آبان‌تتر امتحان کن
+    data = _fetch_abantether(symbol)
+    if data:
+        return data
 
-        if usd_price is None:
-            return None
-    except Exception as e:
-        print(f"⚠️ CoinGecko failed for {symbol}: {type(e).__name__}", flush=True)
-        return None
+    # ۲. اگه آبان‌تتر جواب نداد، از Nobitex امتحان کن
+    print(f"ℹ️ Falling back to Nobitex for {symbol}...", flush=True)
+    data = _fetch_nobitex(symbol)
+    if data:
+        return data
 
-    usd_to_toman = _get_usd_to_toman()
-    if not usd_to_toman:
-        print(f"⚠️ Could not fetch USD/IRT rate for {symbol}", flush=True)
-        return None
-
-    price_in_toman = float(usd_price) * float(usd_to_toman)
-
-    return {
-        "symbol": symbol,
-        "buy_price": price_in_toman,
-        "sell_price": price_in_toman,
-        "change": change_24h
-    }
+    print(f"❌ همه APIها برای {symbol} ناموفق بودن", flush=True)
+    return None
 
 
 def _get_json_price(data, keys_list):
@@ -1255,9 +1262,26 @@ async def on_message(message: Message):
         await message.reply("✅ عملیات لغو شد.", components=main_menu_keyboard())
         return
     if text == '/list':
-        # لیست رمزارزهای CoinGecko
-        crypto_list = list(COINGECKO_MAP.keys())
-        await message.reply("📋 **لیست رمزارزهای موجود:**\n\n" + "، ".join(crypto_list) + footer_text())
+        try:
+            response = requests.get(CRYPTO_API_URL, timeout=20)
+            markets_data = response.json().get("data", {}).get("markets", {})
+            symbols = []
+            if isinstance(markets_data, dict):
+                symbols = list(markets_data.keys())
+            elif isinstance(markets_data, list):
+                symbols = [item.get("symbol") for item in markets_data if item.get("symbol")]
+            clean_symbols = [s.replace("IRT", "") for s in symbols if "IRT" in s] or symbols
+            if not clean_symbols:
+                await message.reply("⚠️ لیست رمزارزها در دسترس نیست." + footer_text())
+                return
+            chunk_size = 50
+            chunks = [clean_symbols[i:i + chunk_size] for i in range(0, len(clean_symbols), chunk_size)]
+            await message.reply("📋 **لیست رمزارزهای موجود:**\n")
+            for i, chunk in enumerate(chunks):
+                await message.reply("، ".join(chunk))
+        except Exception as e:
+            await message.reply("⚠️ خطا در دریافت لیست رمزارزها." + footer_text())
+            print(f"Error fetching crypto list: {e}", flush=True)
         return
     if text == '/myalerts':
         await show_my_alerts(message, user_id)
@@ -1369,8 +1393,29 @@ async def on_callback(callback: CallbackQuery):
         await show_my_alerts(callback.message, user_id, edit=True)
         return
     if data == "MENU:LIST":
-        crypto_list = list(COINGECKO_MAP.keys())
-        await callback.message.reply("📋 **لیست رمزارزهای موجود:**\n\n" + "، ".join(crypto_list) + footer_text())
+        try:
+            response = requests.get(CRYPTO_API_URL, timeout=20)
+            markets_data = response.json().get("data", {}).get("markets", {})
+            symbols = []
+            if isinstance(markets_data, dict):
+                symbols = list(markets_data.keys())
+            elif isinstance(markets_data, list):
+                symbols = [item.get("symbol") for item in markets_data if item.get("symbol")]
+            clean_symbols = [s.replace("IRT", "") for s in symbols if "IRT" in s] or symbols
+            if not clean_symbols:
+                await callback.message.reply("⚠️ لیست در دسترس نیست." + footer_text())
+                return
+            chunk_size = 50
+            chunks = [clean_symbols[i:i + chunk_size] for i in range(0, len(clean_symbols), chunk_size)]
+            await callback.message.reply("📋 **لیست رمزارزها:**\n")
+            for chunk in chunks:
+                await callback.message.reply("، ".join(chunk))
+            markup = InlineKeyboardMarkup()
+            markup.add(InlineKeyboardButton(text="🏠 منوی اصلی", callback_data="MENU:MAIN"), row=0)
+            await callback.message.reply("🔙", components=markup)
+        except Exception as e:
+            await callback.message.reply("⚠️ خطا." + footer_text())
+            print(f"Error: {e}", flush=True)
         return
     if data.startswith("CRYPTO:"):
         parts = data.split(":")
