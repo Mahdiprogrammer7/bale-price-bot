@@ -485,40 +485,141 @@ async def is_favorite(chat_id, asset_key):
 
 # --- عضویت اجباری ---
 async def check_channel_membership(user_id, use_cache=True):
-    """بررسی واقعی عضویت کاربر در کانال.
+    """بررسی حرفه‌ای عضویت کاربر در کانال بله.
 
-    نکته امنیتی: در صورت خطای API هرگز کاربر را عضو فرض نمی‌کنیم.
-    برای دکمه «بررسی عضویت» کش عمداً دور زده می‌شود تا نتیجه تازه باشد.
+    نکات مهم:
+    - برای جلوگیری از مشکل پروکسی سفارشی، بررسی عضویت مستقیماً از Bale Bot API انجام می‌شود.
+    - نتیجه status هم در حالت رشته و هم در حالت Enum/آبجکت مدیریت می‌شود.
+    - در صورت خطا، کاربر عضو فرض نمی‌شود (fail-closed).
+    - دکمه «بررسی عضویت» همیشه cache را دور می‌زند.
+
+    طبق مستندات python-bale-bot، get_chat_member برای بررسی کاربران دیگر
+    عملاً نیازمند دسترسی مدیریتی مناسب بات در کانال است.
     """
     user_id = str(user_id)
     now = time.time()
 
-    # کش کوتاه‌مدت فقط برای کاهش فشار API؛ دکمه Verify کش را دور می‌زند.
     if use_cache and user_id in _force_join_cache:
         cached_at = _force_join_cache[user_id]
         if (now - cached_at) < 60:
             return True
         _force_join_cache.pop(user_id, None)
 
+    # اول API مستقیم Bale را امتحان می‌کنیم تا Proxy سفارشی روی بررسی عضویت اثر نگذارد.
+    api_url = f"https://tapi.bale.ai/bot{BOT_TOKEN}/getChatMember"
+    payload = {
+        "chat_id": CHANNEL_ID,
+        "user_id": int(user_id),
+    }
+
     try:
-        response = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=int(user_id))
-        status = getattr(response, 'status', None)
-        is_member = status in ['member', 'administrator', 'creator']
+        def _direct_membership_request():
+            return requests.post(api_url, json=payload, timeout=15)
+
+        response = await asyncio.to_thread(_direct_membership_request)
+
+        try:
+            body = response.json()
+        except Exception:
+            body = {}
+
+        if response.status_code != 200 or not body.get("ok", False):
+            description = body.get("description", "پاسخ نامعتبر از API بله")
+            print(
+                f"❌ Force Join API | user={user_id} | http={response.status_code} | {description}",
+                flush=True,
+            )
+            _force_join_cache.pop(user_id, None)
+            return False
+
+        result = body.get("result") or {}
+        raw_status = result.get("status")
+
+        # Bale API معمولاً status را به صورت member / administrator / creator برمی‌گرداند.
+        # این نرمال‌سازی برای نسخه‌هایی که status را به شکل Enum یا رشته نمایشی می‌دهند هم هست.
+        status_candidates = {
+            str(raw_status).strip().lower(),
+            str(getattr(raw_status, "value", "")).strip().lower(),
+            str(getattr(raw_status, "name", "")).strip().lower(),
+        }
+        status_candidates.discard("")
+
+        is_member = bool(status_candidates.intersection({
+            "member",
+            "administrator",
+            "creator",
+            "admin",
+            "owner",
+            "chatmemberstatus.member",
+            "chatmemberstatus.administrator",
+            "chatmemberstatus.creator",
+        }))
+
+        # بعض نسخه‌ها ممکن است status را با قالب enum چاپ کنند؛ انتهای مقدار را هم بررسی می‌کنیم.
+        if not is_member:
+            for candidate in status_candidates:
+                if candidate.endswith(".member") or candidate.endswith(".administrator") or candidate.endswith(".creator"):
+                    is_member = True
+                    break
 
         if is_member:
             _force_join_cache[user_id] = now
         else:
-            # اگر کاربر عضو نیست، نتیجه قبلی را هم حذف کن.
             _force_join_cache.pop(user_id, None)
 
-        print(f"🔎 Force Join | user={user_id} | status={status} | member={is_member}", flush=True)
+        print(
+            f"🔎 Force Join | user={user_id} | channel={CHANNEL_ID} | status={raw_status!r} | normalized={sorted(status_candidates)} | member={is_member}",
+            flush=True,
+        )
         return is_member
 
-    except Exception as e:
-        # Fail-closed: خطای بررسی نباید باعث دور زدن عضویت اجباری شود.
+    except Exception as direct_error:
         _force_join_cache.pop(user_id, None)
-        print(f"❌ check membership error | user={user_id} | {type(e).__name__}: {e}", flush=True)
-        return False
+        print(
+            f"❌ Force Join direct API error | user={user_id} | {type(direct_error).__name__}: {direct_error}",
+            flush=True,
+        )
+
+        # اگر API مستقیم در دسترس نبود، یک fallback به خود کتابخانه Bale می‌زنیم.
+        # این fallback هم fail-closed است.
+        try:
+            response = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=int(user_id))
+            if response is None:
+                return False
+
+            raw_status = getattr(response, "status", None)
+            status_candidates = {
+                str(raw_status).strip().lower(),
+                str(getattr(raw_status, "value", "")).strip().lower(),
+                str(getattr(raw_status, "name", "")).strip().lower(),
+            }
+            status_candidates.discard("")
+
+            is_member = bool(status_candidates.intersection({
+                "member", "administrator", "creator", "admin", "owner",
+                "chatmemberstatus.member",
+                "chatmemberstatus.administrator",
+                "chatmemberstatus.creator",
+            }))
+            if not is_member:
+                is_member = any(
+                    x.endswith(".member") or x.endswith(".administrator") or x.endswith(".creator")
+                    for x in status_candidates
+                )
+
+            print(
+                f"🔎 Force Join fallback | user={user_id} | status={raw_status!r} | member={is_member}",
+                flush=True,
+            )
+            if is_member:
+                _force_join_cache[user_id] = now
+            return is_member
+        except Exception as fallback_error:
+            print(
+                f"❌ Force Join fallback error | user={user_id} | {type(fallback_error).__name__}: {fallback_error}",
+                flush=True,
+            )
+            return False
 
 
 def clear_force_join_cache(user_id):
