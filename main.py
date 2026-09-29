@@ -19,16 +19,12 @@ FEEDBACK_ID = os.environ.get("FEEDBACK_ID", "@mahdi8iiii")
 MONGO_URI = os.environ.get("MONGO_URI", "")
 
 CRYPTO_API_URL = 'https://api.abantether.com/api/v1/manager/otc/ticker'
+FIAT_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/fiat.json'
 GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gold.json'
-
-# ===== تنظیمات API الان چند (AlanChand) =====
-ALANCHAND_API_URL = 'https://api.alanchand.com'
-ALANCHAND_TOKEN = 'xwTZpogJ6Gy8zRrzbLJD'
-# ============================================
 
 # 📢 کانال اطلاع‌رسانی
 CHANNEL_ID = "@nabz_mediaa"
-CHANNEL_POST_INTERVAL = 120  # هر 1 ساعت
+CHANNEL_POST_INTERVAL = 3600  # هر 1 ساعت
 CHANNEL_POST_ENABLED = True
 
 # ✅ پروکسی (روی Render باید True باشه)
@@ -300,95 +296,70 @@ async def is_favorite(chat_id, asset_key):
 
 
 # ============================================================
-# --- دریافت قیمت ارزهای فیات از API الان چند (AlanChand) ---
+# --- دریافت قیمت ارزهای فیات از Navasan-API (رایگان) ---
 # ============================================================
 
-# کش سراسری برای قیمت‌های ارز فیات (برای جلوگیری از درخواست‌های تکراری)
+# کش سراسری برای قیمت‌های ارز فیات
 _fiat_cache = {"data": None, "timestamp": 0}
 _FIAT_CACHE_TTL = 120  # 2 دقیقه کش
 
 
-def _get_all_fiat_prices():
-    """دریافت تمام قیمت‌های ارز فیات از API الان چند با یک درخواست"""
+def _get_all_fiat_data():
+    """دریافت تمام داده‌های ارز فیات از Navasan-API با کش"""
     now = time.time()
     if _fiat_cache["data"] and (now - _fiat_cache["timestamp"]) < _FIAT_CACHE_TTL:
         return _fiat_cache["data"]
 
     try:
-        # دریافت تمام ارزهای مورد نیاز در یک درخواست
-        symbols = ",".join(["usd", "eur", "gbp", "aed", "try", "cny", "jpy", "cad", "aud", "chf", "iqd", "sar"])
-        url = f"{ALANCHAND_API_URL}?type=currency&symbols={symbols}"
-        headers = {
-            "Authorization": f"Bearer {ALANCHAND_TOKEN}",
-            "User-Agent": "Mozilla/5.0"
-        }
-        response = requests.get(url, headers=headers, timeout=15)
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(FIAT_API_URL, headers=headers, timeout=15)
         response.raise_for_status()
         data = response.json()
 
-        if data and isinstance(data, dict):
+        if isinstance(data, dict):
             _fiat_cache["data"] = data
             _fiat_cache["timestamp"] = now
-            print(f"✅ AlanChand fiat data fetched successfully", flush=True)
+            print(f"✅ Navasan fiat data fetched successfully", flush=True)
             return data
         return None
     except Exception as e:
-        print(f"⚠️ AlanChand fiat failed: {type(e).__name__}: {e}", flush=True)
-        return _fiat_cache["data"]  # بازگشت به کش قبلی در صورت خطا
+        print(f"⚠️ Navasan fiat failed: {type(e).__name__}: {e}", flush=True)
+        return _fiat_cache["data"]  # بازگشت به کش قبلی
 
 
 def fetch_fiat_data(symbol: str):
     """
-    دریافت قیمت ارز فیات از API الان چند (AlanChand).
-    این API قیمت‌های بازار آزاد ایران را با دقت بالا ارائه می‌دهد.
+    دریافت قیمت ارز فیات از Navasan-API (رایگان و بدون توکن).
     """
-    symbol = symbol.strip().upper()
+    symbol_lower = symbol.strip().lower()
     try:
-        all_data = _get_all_fiat_prices()
-        if not all_data:
+        data = _get_all_fiat_data()
+        if not data:
             return None
 
-        # جستجوی نماد در پاسخ API
-        # ساختار پاسخ ممکن است متفاوت باشد، بنابراین چند حالت را بررسی می‌کنیم
-        symbol_lower = symbol.lower()
+        if symbol_lower in data:
+            price_data = data[symbol_lower]
 
-        # حالت 1: داده‌ها مستقیماً با کلید نماد برگردانده می‌شوند
-        if symbol_lower in all_data:
-            price_data = all_data[symbol_lower]
+            # استخراج قیمت از ساختارهای مختلف JSON
+            price = None
             if isinstance(price_data, dict):
-                price = price_data.get("price") or price_data.get("value") or price_data.get("close")
+                price = price_data.get("value") or price_data.get("price") or price_data.get("rate")
             else:
                 price = price_data
 
             if price is not None:
-                try:
-                    price_in_toman = float(str(price).replace(",", ""))
-                    print(f"✅ AlanChand fiat price for {symbol}: {price_in_toman:,.0f} تومان", flush=True)
-                    return {"symbol": symbol, "price": price_in_toman}
-                except (ValueError, TypeError):
-                    pass
+                price_in_toman = float(str(price).replace(",", ""))
+                # اگه قیمت خیلی بزرگ بود (مثلاً ریال)، به تومان تبدیل کن
+                if price_in_toman > 10_000_000:
+                    # احتمالاً به ریال است
+                    price_in_toman = price_in_toman / 10
+                print(f"✅ Navasan fiat price for {symbol}: {price_in_toman:,.0f} تومان", flush=True)
+                return {"symbol": symbol.upper(), "price": price_in_toman}
 
-        # حالت 2: داده‌ها در یک لیست قرار دارند
-        if "data" in all_data:
-            items = all_data["data"]
-            if isinstance(items, list):
-                for item in items:
-                    if isinstance(item, dict):
-                        item_symbol = str(item.get("symbol", "")).lower()
-                        if item_symbol == symbol_lower:
-                            price = item.get("price") or item.get("value") or item.get("close")
-                            if price is not None:
-                                try:
-                                    price_in_toman = float(str(price).replace(",", ""))
-                                    print(f"✅ AlanChand fiat price for {symbol}: {price_in_toman:,.0f} تومان", flush=True)
-                                    return {"symbol": symbol, "price": price_in_toman}
-                                except (ValueError, TypeError):
-                                    pass
-
-        print(f"⚠️ AlanChand fiat: symbol {symbol} not found in response", flush=True)
+        print(f"⚠️ Navasan fiat: symbol {symbol} not found", flush=True)
         return None
     except Exception as e:
-        print(f"⚠️ AlanChand fiat failed for {symbol}: {type(e).__name__}", flush=True)
+        print(f"⚠️ Navasan fiat failed for {symbol}: {type(e).__name__}", flush=True)
         return None
 
 
