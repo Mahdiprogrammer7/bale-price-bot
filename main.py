@@ -35,23 +35,17 @@ WELCOME_IMAGE_URL = ""
 
 
 # ============================================================
-#       سیستم ترجمه (Translation System)
+#       سیستم ترجمه
 # ============================================================
 TRANSLATIONS = {
     "fa": {
-        # Registration
         "choose_language": "🌐 لطفاً زبان خود را انتخاب کنید:",
-        "lang_fa": "🇮🇷 فارسی",
-        "lang_en": "🇬🇧 English",
         "welcome_new": "سلام! 👋\n\nبه ربات *قیمت لحظه‌ای* خوش آمدید.\n\nلطفاً برای شروع، *نام و نام خانوادگی* خود را وارد کنید:",
-        "ask_name": "✏️ لطفاً نام و نام خانوادگی خود را وارد کنید:",
         "ask_phone": "📱 حالا لطفاً *شماره موبایل* خود را وارد کنید:\n(مثال: 09123456789)",
         "invalid_phone": "❌ شماره موبایل نامعتبر است.\nلطفاً شماره را به فرمت صحیح وارد کنید (مثال: 09123456789):",
         "invalid_name": "❌ نام معتبر نیست (حداقل ۳ حرف). لطفاً دوباره وارد کنید:",
         "register_success": "✅ *ثبت‌نام با موفقیت انجام شد!*\n\n👤 نام: *{name}*\n📱 شماره: *{phone}*\n🌐 زبان: {lang_name}\n\nاز منوی زیر استفاده کنید:",
         "welcome_back": "👋 سلام *{name}* عزیز! خوش برگشتی.\n\nاز منوی زیر استفاده کن:",
-        
-        # Menu
         "menu_title": "🏠 *منوی اصلی*\n\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
         "menu_crypto": "🪙 ارز دیجیتال",
         "menu_fiat": "💵 ارزهای فیات",
@@ -65,43 +59,28 @@ TRANSLATIONS = {
         "menu_main": "🏠 منوی اصلی",
         "menu_back": "🔙 بازگشت",
         "menu_cancel": "❌ انصراف",
-        
-        # Profile
         "profile_title": "👤 *پروفایل شما*",
         "profile_name": "📝 نام: *{name}*",
         "profile_phone": "📱 شماره: `{phone}`",
         "profile_lang": "🌐 زبان: {lang_name}",
         "profile_joined": "📅 تاریخ عضویت: {date}",
         "profile_change_lang": "🌐 تغییر زبان",
-        
-        # Common
         "cancel": "✅ عملیات لغو شد.",
         "error": "❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.",
         "not_found": "❌ یافت نشد.",
-        "loading": "⏳ در حال دریافت...",
-        
-        # Crypto/Fiat/Gold menu titles
         "crypto_title": "🪙 *ارز دیجیتال*\n\nیکی از رمزارزها را انتخاب کنید:",
         "fiat_title": "💵 *ارزهای فیات*\n\nیکی از ارزها را انتخاب کنید:",
         "gold_title": "🥇 *طلا و سکه*\n\nیکی از گزینه‌ها را انتخاب کنید:",
-        
-        # Footer
         "footer": "\n\n━━━━━━━━━━━━━━━━━━\n👨‍💻 توسعه‌دهنده: *{dev}*\n📩 انتقادات: {feedback}",
     },
     "en": {
-        # Registration
         "choose_language": "🌐 Please choose your language:",
-        "lang_fa": "🇮🇷 Persian",
-        "lang_en": "🇬🇧 English",
         "welcome_new": "Hello! 👋\n\nWelcome to the *Price Bot*.\n\nPlease enter your *full name* to get started:",
-        "ask_name": "✏️ Please enter your full name:",
         "ask_phone": "📱 Now please enter your *phone number*:\n(Example: 09123456789)",
         "invalid_phone": "❌ Invalid phone number.\nPlease enter a valid Iranian mobile number (Example: 09123456789):",
         "invalid_name": "❌ Invalid name (at least 3 characters). Please try again:",
         "register_success": "✅ *Registration successful!*\n\n👤 Name: *{name}*\n📱 Phone: *{phone}*\n🌐 Language: {lang_name}\n\nUse the menu below:",
         "welcome_back": "👋 Hello *{name}*! Welcome back.\n\nUse the menu below:",
-        
-        # Menu
         "menu_title": "🏠 *Main Menu*\n\nPlease choose one of the options below:",
         "menu_crypto": "🪙 Cryptocurrency",
         "menu_fiat": "💵 Fiat Currencies",
@@ -115,40 +94,26 @@ TRANSLATIONS = {
         "menu_main": "🏠 Main Menu",
         "menu_back": "🔙 Back",
         "menu_cancel": "❌ Cancel",
-        
-        # Profile
         "profile_title": "👤 *Your Profile*",
         "profile_name": "📝 Name: *{name}*",
         "profile_phone": "📱 Phone: `{phone}`",
         "profile_lang": "🌐 Language: {lang_name}",
         "profile_joined": "📅 Joined: {date}",
         "profile_change_lang": "🌐 Change Language",
-        
-        # Common
         "cancel": "✅ Operation cancelled.",
         "error": "❌ An error occurred. Please try again.",
         "not_found": "❌ Not found.",
-        "loading": "⏳ Loading...",
-        
-        # Crypto/Fiat/Gold menu titles
         "crypto_title": "🪙 *Cryptocurrency*\n\nChoose a coin:",
         "fiat_title": "💵 *Fiat Currencies*\n\nChoose a currency:",
         "gold_title": "🥇 *Gold & Coins*\n\nChoose an option:",
-        
-        # Footer
         "footer": "\n\n━━━━━━━━━━━━━━━━━━\n👨‍💻 Developer: *{dev}*\n📩 Feedback: {feedback}",
     }
 }
 
-# نگاشت کدهای زبان به نام کامل
-LANG_NAMES = {
-    "fa": "فارسی",
-    "en": "English",
-}
+LANG_NAMES = {"fa": "فارسی", "en": "English"}
 
 
 def t(key, lang="fa", **kwargs):
-    """ترجمه یک کلید با فرمت‌دهی اختیاری"""
     lang_dict = TRANSLATIONS.get(lang, TRANSLATIONS["fa"])
     text = lang_dict.get(key, TRANSLATIONS["fa"].get(key, key))
     if kwargs:
@@ -165,7 +130,7 @@ def footer_text(lang="fa"):
 
 
 # ============================================================
-#       استفاده از Cloudflare Proxy
+#       پروکسی
 # ============================================================
 if USE_PROXY:
     _original_aiohttp_request = aiohttp.ClientSession._request
@@ -179,8 +144,6 @@ if USE_PROXY:
 
     aiohttp.ClientSession._request = _patched_aiohttp_request
     print("✅ Cloudflare Proxy override فعال شد!", flush=True)
-else:
-    print("ℹ️ Cloudflare Proxy غیرفعال است.", flush=True)
 # ============================================================
 
 
@@ -193,30 +156,23 @@ BOT_ID = None
 _sent_channel_message_ids = set()
 _channel_thread_started = False
 _checker_thread_started = False
-
-# کش زبان کاربران (برای سرعت بیشتر)
 _user_lang_cache = {}
 
 # ============================================================
-#       اتصال به دیتابیس MongoDB
+#       دیتابیس
 # ============================================================
 db_client = None
 alerts_collection = None
 favorites_collection = None
 users_collection = None
 
+
 async def init_db():
     global db_client, alerts_collection, favorites_collection, users_collection
-    print(f"🔍 DEBUG: init_db called. MONGO_URI starts with: {MONGO_URI[:30] if MONGO_URI else 'EMPTY'}", flush=True)
     if not MONGO_URI:
-        print("⚠️ MONGO_URI تنظیم نشده است.", flush=True)
         return False
     try:
-        db_client = AsyncIOMotorClient(
-            MONGO_URI,
-            server_api=ServerApi('1'),
-            tlsCAFile=certifi.where()
-        )
+        db_client = AsyncIOMotorClient(MONGO_URI, server_api=ServerApi('1'), tlsCAFile=certifi.where())
         await db_client.admin.command('ping')
         db = db_client["bale_bot_db"]
         alerts_collection = db["alerts"]
@@ -297,10 +253,7 @@ def get_asset_display_name(asset_key):
     return asset_key
 
 
-# ============================================================
 # --- توابع دیتابیس: کاربران ---
-# ============================================================
-
 async def get_user(chat_id):
     if users_collection is None:
         return None
@@ -322,11 +275,8 @@ async def create_user(chat_id, name, phone, language):
             )
         else:
             await users_collection.insert_one({
-                "chat_id": str(chat_id),
-                "name": name,
-                "phone": phone,
-                "language": language,
-                "created_at": time.time()
+                "chat_id": str(chat_id), "name": name, "phone": phone,
+                "language": language, "created_at": time.time()
             })
         return True
     except Exception as e:
@@ -335,7 +285,6 @@ async def create_user(chat_id, name, phone, language):
 
 
 async def get_user_language(chat_id):
-    """گرفتن زبان کاربر با کش"""
     chat_id_str = str(chat_id)
     if chat_id_str in _user_lang_cache:
         return _user_lang_cache[chat_id_str]
@@ -351,10 +300,7 @@ def clear_lang_cache(chat_id):
         del _user_lang_cache[chat_id_str]
 
 
-# ============================================================
 # --- توابع دیتابیس: هشدارها ---
-# ============================================================
-
 async def add_alert(chat_id, asset_key, target_price, direction):
     if alerts_collection is not None:
         await alerts_collection.delete_many({"chat_id": str(chat_id), "asset": asset_key})
@@ -384,10 +330,7 @@ async def get_all_alerts():
     return []
 
 
-# ============================================================
 # --- توابع دیتابیس: علاقه‌مندی‌ها ---
-# ============================================================
-
 async def add_favorite(chat_id, asset_key):
     if favorites_collection is not None:
         existing = await favorites_collection.find_one({"chat_id": str(chat_id), "asset": asset_key})
@@ -416,10 +359,7 @@ async def is_favorite(chat_id, asset_key):
     return asset_key in favs
 
 
-# ============================================================
-# --- دریافت قیمت‌ها ---
-# ============================================================
-
+# --- قیمت‌ها ---
 _fiat_cache = {"data": None, "timestamp": 0}
 _FIAT_CACHE_TTL = 120
 
@@ -529,7 +469,7 @@ def _fetch_abantether(symbol):
             return {"symbol": target_key, "buy_price": buy_price, "sell_price": sell_price, "change": change}
         return None
     except Exception as e:
-        print(f"⚠️ Abantether parse failed for {symbol}: {type(e).__name__}", flush=True)
+        print(f"⚠️ Abantether parse failed: {type(e).__name__}", flush=True)
         return None
 
 
@@ -547,7 +487,7 @@ def _fetch_nobitex_crypto(symbol):
                 return {"symbol": symbol, "buy_price": price_in_toman, "sell_price": price_in_toman, "change": None}
         return None
     except Exception as e:
-        print(f"⚠️ Nobitex crypto failed for {symbol}: {type(e).__name__}", flush=True)
+        print(f"⚠️ Nobitex crypto failed: {type(e).__name__}", flush=True)
         return None
 
 
@@ -887,10 +827,8 @@ async def process_crypto_and_reply(message, symbol, user_id=None):
     buy_price_str = format_price(data['buy_price'])
     sell_price_str = format_price(data['sell_price'])
     result_text = (
-        f"📊 **{data['symbol']}**\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"💵: **{buy_price_str} IRT**\n"
-        f"💰: **{sell_price_str} IRT**\n"
+        f"📊 **{data['symbol']}**\n━━━━━━━━━━━━━━━━━━\n"
+        f"💵: **{buy_price_str} IRT**\n💰: **{sell_price_str} IRT**\n"
     )
     if data['change'] is not None:
         try:
@@ -1117,8 +1055,8 @@ def build_channel_post():
             if data and data.get("price"):
                 name = FIAT_NAMES.get(sym, sym)
                 lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
-        except Exception as e:
-            print(f"Error: {e}", flush=True)
+        except:
+            pass
     lines.append("")
     lines.append("🥇 **طلا و سکه:**")
     for asset in ["gold_18", "coin_emami", "coin_half"]:
@@ -1127,8 +1065,8 @@ def build_channel_post():
             if data and data.get("price"):
                 name = GOLD_NAMES.get(asset, asset)
                 lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
-        except Exception as e:
-            print(f"Error: {e}", flush=True)
+        except:
+            pass
     lines.append("")
     lines.append("🪙 **رمزارزها:**")
     for sym in ["BTC", "ETH", "USDT", "BNB", "SOL"]:
@@ -1149,8 +1087,8 @@ def build_channel_post():
                 except:
                     formatted = format_price(price_val)
                 lines.append(f"  • {sym}: **{formatted} تومان**")
-        except Exception as e:
-            print(f"Error: {e}", flush=True)
+        except:
+            pass
     lines.append("")
     lines.append("━━━━━━━━━━━━━━━━━━")
     lines.append(f"🕐 {time.strftime('%Y-%m-%d %H:%M')}")
@@ -1195,8 +1133,6 @@ def channel_poster():
 @bot.event
 async def on_ready():
     global MAIN_LOOP, BOT_ID, _channel_thread_started, _checker_thread_started
-    print("=" * 60, flush=True)
-    print("🚀 ON_READY CALLED!", flush=True)
     print(f"ربات {bot.user.username} با موفقیت روشن شد!", flush=True)
     MAIN_LOOP = asyncio.get_running_loop()
     try:
@@ -1204,9 +1140,7 @@ async def on_ready():
     except:
         pass
     try:
-        db_ok = await init_db()
-        if db_ok:
-            print("✅ MongoDB متصل شد!", flush=True)
+        await init_db()
     except Exception as e:
         print(f"❌ init_db error: {e}", flush=True)
 
@@ -1214,23 +1148,20 @@ async def on_ready():
         try:
             asyncio.create_task(alert_checker_async())
             _checker_thread_started = True
-            print("✅ سیستم هشدار قیمت فعال شد!", flush=True)
-        except Exception as e:
-            print(f"❌ alert_checker error: {e}", flush=True)
+        except:
+            pass
 
     if not _channel_thread_started:
         try:
             channel_thread = threading.Thread(target=channel_poster, daemon=True)
             channel_thread.start()
             _channel_thread_started = True
-            print("✅ سیستم پست کانال فعال شد!", flush=True)
-        except Exception as e:
-            print(f"❌ channel_poster error: {e}", flush=True)
+        except:
+            pass
 
 
 @bot.event
 async def on_message(message: Message):
-    # فیلترها
     try:
         msg_id = str(getattr(message, 'message_id', ''))
         if msg_id and msg_id in _sent_channel_message_ids:
@@ -1269,9 +1200,7 @@ async def on_message(message: Message):
     text = message.content.strip()
     text_upper = text.upper()
 
-    # ============================================================
-    #               وضعیت ثبت‌نام / انتخاب زبان
-    # ============================================================
+    # وضعیت‌های ثبت‌نام / زبان
     if user_id in user_states:
         state = user_states[user_id]["state"]
         data = user_states[user_id].get("data", {})
@@ -1287,12 +1216,10 @@ async def on_message(message: Message):
             return
 
         if state == "awaiting_phone":
-            # اعتبارسنجی شماره موبایل ایران
             clean_phone = text.replace(" ", "").replace("-", "")
             if not re.match(r'^09\d{9}$', clean_phone):
                 await message.reply(t("invalid_phone", lang))
                 return
-            # ذخیره در دیتابیس
             ok = await create_user(user_id, data.get("name", ""), clean_phone, lang)
             clear_state(user_id)
             clear_lang_cache(user_id)
@@ -1304,17 +1231,15 @@ async def on_message(message: Message):
             await message.reply(success_text + footer_text(lang), components=main_menu_keyboard(lang))
             return
 
-        # State های دیگر (هشدار، مبدل)
         if state == "alert_awaiting_price":
             try:
                 price = float(text.replace(",", "").replace("،", ""))
                 data["target_price"] = price
                 user_states[user_id]["state"] = "alert_awaiting_direction"
-                asset_name = get_asset_display_name(data["asset"])
                 msg = f"🎯 قیمت هدف: **{format_price(price)} تومان**\n\nحالا انتخاب کنید:"
                 await message.reply(msg + footer_text(lang), components=alert_direction_keyboard(lang))
             except ValueError:
-                await message.reply("❌ لطفاً یک عدد معتبر ارسال کنید." + footer_text(lang))
+                await message.reply("❌ عدد معتبر وارد کنید." + footer_text(lang))
             return
 
         if state == "alert_awaiting_manual_asset":
@@ -1344,19 +1269,14 @@ async def on_message(message: Message):
                 await message.reply("❌ عدد معتبر وارد کنید." + footer_text(lang))
             return
 
-    # ============================================================
-    #                       دستورات
-    # ============================================================
+    # دستورات
     if text == '/start':
-        # چک کن کاربر ثبت‌نام شده یا نه
         user = await get_user(user_id)
         if user:
-            # کاربر قدیمی
             lang = user.get("language", "fa")
             _user_lang_cache[user_id] = lang
             await show_main_menu(message, user_id)
         else:
-            # کاربر جدید → انتخاب زبان
             user_states[user_id] = {"state": "awaiting_language", "data": {}}
             await message.reply(t("choose_language", "fa"), components=language_keyboard())
         return
@@ -1392,9 +1312,6 @@ async def on_message(message: Message):
             elif isinstance(markets_data, list):
                 symbols = [item.get("symbol") for item in markets_data if item.get("symbol")]
             clean_symbols = [s.replace("IRT", "") for s in symbols if "IRT" in s] or symbols
-            if not clean_symbols:
-                await message.reply(t("not_found", lang) + footer_text(lang))
-                return
             chunks = [clean_symbols[i:i + 50] for i in range(0, len(clean_symbols), 50)]
             await message.reply("📋 **لیست رمزارزها:**\n")
             for chunk in chunks:
@@ -1410,7 +1327,7 @@ async def on_message(message: Message):
         await show_favorites(message, user_id)
         return
 
-    # فرمت هشدار دستی
+    # فرمت هشدار
     alert_match = re.match(r'^هشدار\s+([A-Za-z_0-9]+)\s+(\d+(?:\.\d+)?)\s+(بالا|پایین|بیشتر|کمتر)$', text, re.IGNORECASE)
     if alert_match:
         asset_key = alert_match.group(1)
@@ -1437,7 +1354,7 @@ async def on_message(message: Message):
         )
         return
 
-    # فرمت مبدل دستی
+    # فرمت مبدل
     conv_match = re.match(r'^(\d+(?:\.\d+)?)\s+([A-Za-z_]{2,10})\s+(?:به|to|in)\s+([A-Za-z_]{2,10})$', text, re.IGNORECASE)
     if conv_match:
         amount = float(conv_match.group(1))
@@ -1466,7 +1383,6 @@ async def on_message(message: Message):
         await process_fiat_and_reply(message, text_upper, user_id)
         return
 
-    # اگه کاربر ثبت‌نام نکرده، پیام یادآوری
     user = await get_user(user_id)
     if not user:
         user_states[user_id] = {"state": "awaiting_language", "data": {}}
@@ -1476,6 +1392,9 @@ async def on_message(message: Message):
     await process_crypto_and_reply(message, text_upper, user_id)
 
 
+# ============================================================
+#     رویداد کلیک روی دکمه‌ها (بدون callback.answer)
+# ============================================================
 @bot.event
 async def on_callback(callback: CallbackQuery):
     data = callback.data
@@ -1483,7 +1402,6 @@ async def on_callback(callback: CallbackQuery):
     if not user_id:
         return
 
-    # فقط چت خصوصی
     try:
         if hasattr(callback, 'message') and callback.message:
             if hasattr(callback.message, 'chat') and callback.message.chat:
@@ -1493,17 +1411,13 @@ async def on_callback(callback: CallbackQuery):
     except:
         return
 
-    # ============================================================
-    #                   انتخاب / تغییر زبان
-    # ============================================================
+    # انتخاب / تغییر زبان
     if data.startswith("LANG:"):
         new_lang = data.split(":")[1]
         if new_lang not in ["fa", "en"]:
             new_lang = "fa"
 
-        # چک کن آیا در حال تغییر زبان (کاربر قدیمی) هست یا اولین انتخاب (کاربر جدید)
-        if user_id in user_states and user_states[user_id]["state"] in ["changing_language"]:
-            # تغییر زبان کاربر قدیمی
+        if user_id in user_states and user_states[user_id]["state"] == "changing_language":
             user = await get_user(user_id)
             if user:
                 await create_user(user_id, user.get("name", ""), user.get("phone", ""), new_lang)
@@ -1512,39 +1426,30 @@ async def on_callback(callback: CallbackQuery):
                 await show_main_menu(callback.message, user_id, edit=True)
                 return
 
-        # کاربر جدید در حال ثبت‌نام
         user_states[user_id] = {"state": "awaiting_name", "data": {"lang": new_lang}}
         try:
             await callback.message.edit(t("welcome_new", new_lang))
         except:
             await callback.message.reply(t("welcome_new", new_lang))
-        await callback.answer()
         return
 
-    # اگه کاربر ثبت‌نام نشده، اجازه استفاده نداشته باشه
     user = await get_user(user_id)
     if not user:
         try:
             await callback.message.reply(t("choose_language", "fa"), components=language_keyboard())
         except:
             pass
-        await callback.answer()
         return
 
     lang = await get_user_language(user_id)
 
-    # ============================================================
-    #                       منوها
-    # ============================================================
     if data == "MENU:MAIN":
         clear_state(user_id)
         await show_main_menu(callback.message, user_id, edit=True)
-        await callback.answer()
         return
 
     if data == "MENU:PROFILE":
         await show_profile(callback.message, user_id, edit=True)
-        await callback.answer()
         return
 
     if data == "MENU:LANG":
@@ -1553,7 +1458,6 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit(t("choose_language", lang), components=language_keyboard())
         except:
             await callback.message.reply(t("choose_language", lang), components=language_keyboard())
-        await callback.answer()
         return
 
     if data == "MENU:CRYPTO":
@@ -1562,7 +1466,6 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit(t("crypto_title", lang) + footer_text(lang), components=crypto_menu_keyboard(lang))
         except:
             await callback.message.reply(t("crypto_title", lang) + footer_text(lang), components=crypto_menu_keyboard(lang))
-        await callback.answer()
         return
 
     if data == "MENU:FIAT":
@@ -1571,7 +1474,6 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit(t("fiat_title", lang) + footer_text(lang), components=fiat_menu_keyboard(lang))
         except:
             await callback.message.reply(t("fiat_title", lang) + footer_text(lang), components=fiat_menu_keyboard(lang))
-        await callback.answer()
         return
 
     if data == "MENU:GOLD":
@@ -1580,12 +1482,10 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit(t("gold_title", lang) + footer_text(lang), components=gold_menu_keyboard(lang))
         except:
             await callback.message.reply(t("gold_title", lang) + footer_text(lang), components=gold_menu_keyboard(lang))
-        await callback.answer()
         return
 
     if data == "MENU:MYALERTS":
         await show_my_alerts(callback.message, user_id, edit=True)
-        await callback.answer()
         return
 
     if data == "MENU:LIST":
@@ -1607,35 +1507,29 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.reply("🔙", components=markup)
         except Exception as e:
             print(f"Error: {e}", flush=True)
-        await callback.answer()
         return
 
     if data.startswith("CRYPTO:"):
         parts = data.split(":")
         if len(parts) >= 2:
             await process_crypto_and_reply(callback.message, parts[1], user_id)
-        await callback.answer()
         return
 
     if data.startswith("FIAT:"):
         parts = data.split(":")
         if len(parts) >= 2:
             await process_fiat_and_reply(callback.message, parts[1], user_id)
-        await callback.answer()
         return
 
     if data.startswith("GOLD:"):
         parts = data.split(":")
         if len(parts) >= 2:
             await process_gold_and_reply(callback.message, parts[1], user_id)
-        await callback.answer()
         return
 
-    # --- علاقه‌مندی‌ها ---
     if data == "FAV:VIEW":
         clear_state(user_id)
         await show_favorites(callback.message, user_id, edit=True)
-        await callback.answer()
         return
 
     if data == "FAV:NEW":
@@ -1644,28 +1538,24 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit("⭐ **افزودن**\n\nکدام دسته؟" + footer_text(lang), components=fav_category_keyboard(lang))
         except:
             await callback.message.reply("⭐ **افزودن**\n\nکدام دسته؟" + footer_text(lang), components=fav_category_keyboard(lang))
-        await callback.answer()
         return
 
     if data.startswith("FAV:CAT:"):
         parts = data.split(":")
         category = parts[2] if len(parts) >= 3 else None
         if not category:
-            await callback.answer()
             return
         user_favs = await get_user_favorites(user_id)
         try:
             await callback.message.edit("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
         except:
             await callback.message.reply("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
-        await callback.answer()
         return
 
     if data.startswith("FAV:ADD:"):
         parts = data.split(":")
         asset = parts[2] if len(parts) >= 3 else None
         if not asset:
-            await callback.answer()
             return
         added = await add_favorite(user_id, asset)
         asset_name = get_asset_display_name(asset)
@@ -1676,14 +1566,12 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
         except:
             pass
-        await callback.answer()
         return
 
     if data.startswith("FAV:DEL:"):
         parts = data.split(":")
         asset = parts[2] if len(parts) >= 3 else None
         if not asset:
-            await callback.answer()
             return
         await remove_favorite(user_id, asset)
         asset_name = get_asset_display_name(asset)
@@ -1694,10 +1582,8 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
         except:
             pass
-        await callback.answer()
         return
 
-    # --- هشدارها ---
     if data.startswith("DELALERT:"):
         parts = data.split(":")
         if len(parts) >= 2:
@@ -1705,7 +1591,6 @@ async def on_callback(callback: CallbackQuery):
             await remove_alert(user_id, asset)
             await callback.message.reply(f"✅ **{get_asset_display_name(asset)}** حذف شد." + footer_text(lang))
             await show_my_alerts(callback.message, user_id, edit=True)
-        await callback.answer()
         return
 
     if data == "ALERT:NEW":
@@ -1714,33 +1599,28 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit("🔔 **ثبت هشدار**\n\nدسته‌بندی:" + footer_text(lang), components=alert_asset_category_keyboard(lang))
         except:
             await callback.message.reply("🔔 **ثبت هشدار**\n\nدسته‌بندی:" + footer_text(lang), components=alert_asset_category_keyboard(lang))
-        await callback.answer()
         return
 
     if data.startswith("ALERT:CAT:"):
         parts = data.split(":")
         category = parts[2] if len(parts) >= 3 else None
         if not category:
-            await callback.answer()
             return
         try:
             await callback.message.edit("🔔 **انتخاب دارایی:**", components=alert_asset_list_keyboard(category, lang))
         except:
             await callback.message.reply("🔔 **انتخاب دارایی:**", components=alert_asset_list_keyboard(category, lang))
-        await callback.answer()
         return
 
     if data == "ALERT:MANUAL":
         user_states[user_id] = {"state": "alert_awaiting_manual_asset", "data": {"lang": lang}}
         await callback.message.reply("✏️ **نام دارایی را وارد کنید:**\n\n🔸 `BTC`\n🔸 `USD`\n🔸 `coin_emami`" + footer_text(lang))
-        await callback.answer()
         return
 
     if data.startswith("ALERT:SET:"):
         parts = data.split(":")
         asset = parts[2] if len(parts) >= 3 else None
         if not asset:
-            await callback.answer()
             return
         user_states[user_id] = {"state": "alert_awaiting_price", "data": {"asset": asset, "lang": lang}}
         current = get_current_price(asset)
@@ -1749,21 +1629,15 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit(f"✅ **{get_asset_display_name(asset)}**{current_text}\n\n🎯 قیمت هدف را وارد کنید:" + footer_text(lang))
         except:
             await callback.message.reply(f"✅ **{get_asset_display_name(asset)}**{current_text}\n\n🎯 قیمت هدف را وارد کنید:" + footer_text(lang))
-        await callback.answer()
         return
 
     if data.startswith("ALERT:DIR:"):
         parts = data.split(":")
         direction = parts[2] if len(parts) >= 3 else None
         if not direction:
-            await callback.answer()
             return
         if user_id not in user_states or "asset" not in user_states[user_id]["data"] or "target_price" not in user_states[user_id]["data"]:
-            try:
-                await callback.message.reply("❌ خطا. دوباره شروع کنید.", components=main_menu_keyboard(lang))
-            except:
-                pass
-            await callback.answer()
+            await callback.message.reply("❌ خطا. دوباره شروع کنید.", components=main_menu_keyboard(lang))
             return
         asset = user_states[user_id]["data"]["asset"]
         target_price = user_states[user_id]["data"]["target_price"]
@@ -1783,66 +1657,51 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit(text, components=markup)
         except:
             await callback.message.reply(text, components=markup)
-        await callback.answer()
         return
 
     if data == "ALERT:CANCEL":
         clear_state(user_id)
         await callback.message.reply(t("cancel", lang), components=main_menu_keyboard(lang))
-        await callback.answer()
         return
 
-    # --- مبدل ---
     if data == "CONV:NEW":
         clear_state(user_id)
         try:
             await callback.message.edit("🔄 **مبدل ارز**\n\nمرحله ۱: **ارز مبدأ؟**" + footer_text(lang), components=convert_from_keyboard(lang))
         except:
             await callback.message.reply("🔄 **مبدل ارز**\n\nمرحله ۱: **ارز مبدأ؟**" + footer_text(lang), components=convert_from_keyboard(lang))
-        await callback.answer()
         return
 
     if data.startswith("CONV:FROM:"):
         parts = data.split(":")
         from_asset = parts[2] if len(parts) >= 3 else None
         if not from_asset:
-            await callback.answer()
             return
         user_states[user_id] = {"state": "convert_awaiting_amount", "data": {"from_asset": from_asset, "lang": lang}}
         try:
             await callback.message.edit(f"✅ **{get_asset_display_name(from_asset)}**\n\nمرحله ۲: **مقدار؟**" + footer_text(lang))
         except:
             await callback.message.reply(f"✅ **{get_asset_display_name(from_asset)}**\n\nمرحله ۲: **مقدار؟**" + footer_text(lang))
-        await callback.answer()
         return
 
     if data.startswith("CONV:TO:"):
         parts = data.split(":")
         to_asset = parts[2] if len(parts) >= 3 else None
         if not to_asset:
-            await callback.answer()
             return
         if user_id not in user_states or "from_asset" not in user_states[user_id]["data"] or "amount" not in user_states[user_id]["data"]:
-            try:
-                await callback.message.reply("❌ خطا. دوباره شروع کنید.", components=main_menu_keyboard(lang))
-            except:
-                pass
-            await callback.answer()
+            await callback.message.reply("❌ خطا. دوباره شروع کنید.", components=main_menu_keyboard(lang))
             return
         from_asset = user_states[user_id]["data"]["from_asset"]
         amount = user_states[user_id]["data"]["amount"]
         clear_state(user_id)
         await do_convert(callback.message, amount, from_asset, to_asset, user_id)
-        await callback.answer()
         return
 
     if data == "CONV:CANCEL":
         clear_state(user_id)
         await callback.message.reply(t("cancel", lang), components=main_menu_keyboard(lang))
-        await callback.answer()
         return
-
-    await callback.answer()
 
 
 # --- سرور وب ---
