@@ -22,25 +22,30 @@ CRYPTO_API_URL = 'https://api.abantether.com/api/v1/manager/otc/ticker'
 FIAT_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/fiat.json'
 GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gold.json'
 
+# ✅ تنظیمات پروکسی - اگه خطای شبکه گرفتی، USE_PROXY رو True کن
+USE_PROXY = False
 PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
 WELCOME_IMAGE_URL = ""
 # ==================================================
 
 
 # ============================================================
-#       استفاده از Cloudflare Proxy برای دور زدن محدودیت IP
+#       استفاده از Cloudflare Proxy (فقط اگه USE_PROXY = True)
 # ============================================================
-_original_aiohttp_request = aiohttp.ClientSession._request
+if USE_PROXY:
+    _original_aiohttp_request = aiohttp.ClientSession._request
 
-async def _patched_aiohttp_request(self, method, url, *args, **kwargs):
-    url_str = str(url)
-    if 'tapi.bale.ai' in url_str:
-        new_url = url_str.replace('https://tapi.bale.ai', PROXY_URL).replace('http://tapi.bale.ai', PROXY_URL)
-        url_str = new_url
-    return await _original_aiohttp_request(self, method, url_str, *args, **kwargs)
+    async def _patched_aiohttp_request(self, method, url, *args, **kwargs):
+        url_str = str(url)
+        if 'tapi.bale.ai' in url_str:
+            new_url = url_str.replace('https://tapi.bale.ai', PROXY_URL).replace('http://tapi.bale.ai', PROXY_URL)
+            url_str = new_url
+        return await _original_aiohttp_request(self, method, url_str, *args, **kwargs)
 
-aiohttp.ClientSession._request = _patched_aiohttp_request
-print("✅ Cloudflare Proxy override فعال شد!", flush=True)
+    aiohttp.ClientSession._request = _patched_aiohttp_request
+    print("✅ Cloudflare Proxy override فعال شد!", flush=True)
+else:
+    print("ℹ️ Cloudflare Proxy غیرفعال است. اتصال مستقیم به بله.", flush=True)
 # ============================================================
 
 
@@ -710,7 +715,6 @@ async def on_ready():
         traceback.print_exc()
 
     try:
-        # ✅ اصلاح اصلی: استفاده از asyncio.create_task به جای thread جداگانه
         asyncio.create_task(alert_checker_async())
         print("✅ سیستم هشدار قیمت فعال شد!", flush=True)
     except Exception as e:
