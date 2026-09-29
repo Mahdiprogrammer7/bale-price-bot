@@ -19,12 +19,12 @@ FEEDBACK_ID = os.environ.get("FEEDBACK_ID", "@mahdi8iiii")
 MONGO_URI = os.environ.get("MONGO_URI", "")
 
 CRYPTO_API_URL = 'https://api.abantether.com/api/v1/manager/otc/ticker'
-FIAT_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/fiat.json'
+FIAT_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/fiat.json'  # دیگر استفاده نمی‌شود
 GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gold.json'
 
 # 📢 کانال اطلاع‌رسانی
 CHANNEL_ID = "@nabz_mediaa"
-CHANNEL_POST_INTERVAL = 3600  # هر 1 ساعت
+CHANNEL_POST_INTERVAL = 120  # هر 1 ساعت
 CHANNEL_POST_ENABLED = True
 
 # ✅ پروکسی (روی Render باید True باشه)
@@ -32,7 +32,6 @@ USE_PROXY = True
 PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
 WELCOME_IMAGE_URL = ""
 # ==================================================
-
 
 # ============================================================
 #       استفاده از Cloudflare Proxy برای دور زدن محدودیت IP
@@ -52,7 +51,6 @@ if USE_PROXY:
 else:
     print("ℹ️ Cloudflare Proxy غیرفعال است. اتصال مستقیم به بله.", flush=True)
 # ============================================================
-
 
 bot = Bot(token=BOT_TOKEN)
 
@@ -95,7 +93,6 @@ async def init_db():
         traceback.print_exc()
         return False
 # ============================================================
-
 
 POPULAR_CRYPTOS = ["BTC", "ETH", "USDT", "BNB", "SOL", "XRP", "ADA", "DOGE", "TRX", "TON"]
 POPULAR_FIATS = ["USD", "EUR", "AED", "TRY", "GBP", "IQD", "CNY", "JPY", "CAD", "AUD", "CHF", "SAR"]
@@ -299,6 +296,37 @@ async def is_favorite(chat_id, asset_key):
 
 
 # ============================================================
+# --- دریافت قیمت ارزهای فیات از نوبیتکس (اصلاح‌شده) ---
+# ============================================================
+
+def fetch_fiat_data(symbol: str):
+    """
+    دریافت قیمت ارز فیات از API نوبیتکس.
+    این API قیمت‌های بازار آزاد را به صورت دقیق‌تر ارائه می‌دهد.
+    """
+    symbol = symbol.strip().upper()
+    try:
+        # نوبیتکس از جفت ارزهایی مثل USDIRT برای دریافت قیمت استفاده می‌کند
+        url = f"https://api.nobitex.ir/v2/orderbook/{symbol}IRT"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("status") == "ok":
+            last_price_rial = data.get("lastTradePrice")
+            if last_price_rial:
+                # قیمت به ریاله، تقسیم بر 10 برای تومان
+                price_in_toman = float(last_price_rial) / 10
+                print(f"✅ Nobitex fiat price for {symbol}: {price_in_toman:,.0f} تومان", flush=True)
+                return {"symbol": symbol, "price": price_in_toman}
+        return None
+    except Exception as e:
+        print(f"⚠️ Nobitex fiat failed for {symbol}: {type(e).__name__}", flush=True)
+        return None
+
+
+# ============================================================
 # --- دریافت قیمت رمزارز از آبان‌تتر (با Nobitex پشتیبان) ---
 # ============================================================
 
@@ -381,8 +409,8 @@ def _fetch_abantether(symbol):
         return None
 
 
-def _fetch_nobitex(symbol):
-    """دریافت از Nobitex (پشتیبان)"""
+def _fetch_nobitex_crypto(symbol):
+    """دریافت رمزارز از Nobitex (پشتیبان)"""
     try:
         url = f"https://api.nobitex.ir/v2/orderbook/{symbol}IRT"
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -403,7 +431,7 @@ def _fetch_nobitex(symbol):
                 }
         return None
     except Exception as e:
-        print(f"⚠️ Nobitex failed for {symbol}: {type(e).__name__}", flush=True)
+        print(f"⚠️ Nobitex crypto failed for {symbol}: {type(e).__name__}", flush=True)
         return None
 
 
@@ -418,7 +446,7 @@ def fetch_crypto_data(symbol: str):
 
     # ۲. اگه آبان‌تتر جواب نداد، از Nobitex امتحان کن
     print(f"ℹ️ Falling back to Nobitex for {symbol}...", flush=True)
-    data = _fetch_nobitex(symbol)
+    data = _fetch_nobitex_crypto(symbol)
     if data:
         return data
 
@@ -460,25 +488,6 @@ def _get_json_price(data, keys_list):
     if isinstance(data, list) and len(data) > 0:
         return _get_json_price(data[0], keys_list)
     return None
-
-
-def fetch_fiat_data(symbol: str):
-    symbol_lower = symbol.strip().lower()
-    try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(FIAT_API_URL, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        if not isinstance(data, dict):
-            return None
-        if symbol_lower in data:
-            price = _get_json_price(data[symbol_lower], ["value", "price", "rate"])
-            if price is not None:
-                return {"symbol": symbol.upper(), "price": price}
-        return None
-    except Exception as e:
-        print(f"API Error (Fiat): {e}", flush=True)
-        return None
 
 
 def fetch_gold_data(asset_key: str):
