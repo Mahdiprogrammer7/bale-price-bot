@@ -19,8 +19,12 @@ FEEDBACK_ID = os.environ.get("FEEDBACK_ID", "@mahdi8iiii")
 MONGO_URI = os.environ.get("MONGO_URI", "")
 
 CRYPTO_API_URL = 'https://api.abantether.com/api/v1/manager/otc/ticker'
-FIAT_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/fiat.json'  # دیگر استفاده نمی‌شود
 GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gold.json'
+
+# ===== تنظیمات API الان چند (AlanChand) =====
+ALANCHAND_API_URL = 'https://api.alanchand.com'
+ALANCHAND_TOKEN = 'xwTZpogJ6Gy8zRrzbLJD'
+# ============================================
 
 # 📢 کانال اطلاع‌رسانی
 CHANNEL_ID = "@nabz_mediaa"
@@ -296,33 +300,95 @@ async def is_favorite(chat_id, asset_key):
 
 
 # ============================================================
-# --- دریافت قیمت ارزهای فیات از نوبیتکس (اصلاح‌شده) ---
+# --- دریافت قیمت ارزهای فیات از API الان چند (AlanChand) ---
 # ============================================================
 
-def fetch_fiat_data(symbol: str):
-    """
-    دریافت قیمت ارز فیات از API نوبیتکس.
-    این API قیمت‌های بازار آزاد را به صورت دقیق‌تر ارائه می‌دهد.
-    """
-    symbol = symbol.strip().upper()
+# کش سراسری برای قیمت‌های ارز فیات (برای جلوگیری از درخواست‌های تکراری)
+_fiat_cache = {"data": None, "timestamp": 0}
+_FIAT_CACHE_TTL = 120  # 2 دقیقه کش
+
+
+def _get_all_fiat_prices():
+    """دریافت تمام قیمت‌های ارز فیات از API الان چند با یک درخواست"""
+    now = time.time()
+    if _fiat_cache["data"] and (now - _fiat_cache["timestamp"]) < _FIAT_CACHE_TTL:
+        return _fiat_cache["data"]
+
     try:
-        # نوبیتکس از جفت ارزهایی مثل USDIRT برای دریافت قیمت استفاده می‌کند
-        url = f"https://api.nobitex.ir/v2/orderbook/{symbol}IRT"
-        headers = {"User-Agent": "Mozilla/5.0"}
+        # دریافت تمام ارزهای مورد نیاز در یک درخواست
+        symbols = ",".join(["usd", "eur", "gbp", "aed", "try", "cny", "jpy", "cad", "aud", "chf", "iqd", "sar"])
+        url = f"{ALANCHAND_API_URL}?type=currency&symbols={symbols}"
+        headers = {
+            "Authorization": f"Bearer {ALANCHAND_TOKEN}",
+            "User-Agent": "Mozilla/5.0"
+        }
         response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
         data = response.json()
 
-        if data.get("status") == "ok":
-            last_price_rial = data.get("lastTradePrice")
-            if last_price_rial:
-                # قیمت به ریاله، تقسیم بر 10 برای تومان
-                price_in_toman = float(last_price_rial) / 10
-                print(f"✅ Nobitex fiat price for {symbol}: {price_in_toman:,.0f} تومان", flush=True)
-                return {"symbol": symbol, "price": price_in_toman}
+        if data and isinstance(data, dict):
+            _fiat_cache["data"] = data
+            _fiat_cache["timestamp"] = now
+            print(f"✅ AlanChand fiat data fetched successfully", flush=True)
+            return data
         return None
     except Exception as e:
-        print(f"⚠️ Nobitex fiat failed for {symbol}: {type(e).__name__}", flush=True)
+        print(f"⚠️ AlanChand fiat failed: {type(e).__name__}: {e}", flush=True)
+        return _fiat_cache["data"]  # بازگشت به کش قبلی در صورت خطا
+
+
+def fetch_fiat_data(symbol: str):
+    """
+    دریافت قیمت ارز فیات از API الان چند (AlanChand).
+    این API قیمت‌های بازار آزاد ایران را با دقت بالا ارائه می‌دهد.
+    """
+    symbol = symbol.strip().upper()
+    try:
+        all_data = _get_all_fiat_prices()
+        if not all_data:
+            return None
+
+        # جستجوی نماد در پاسخ API
+        # ساختار پاسخ ممکن است متفاوت باشد، بنابراین چند حالت را بررسی می‌کنیم
+        symbol_lower = symbol.lower()
+
+        # حالت 1: داده‌ها مستقیماً با کلید نماد برگردانده می‌شوند
+        if symbol_lower in all_data:
+            price_data = all_data[symbol_lower]
+            if isinstance(price_data, dict):
+                price = price_data.get("price") or price_data.get("value") or price_data.get("close")
+            else:
+                price = price_data
+
+            if price is not None:
+                try:
+                    price_in_toman = float(str(price).replace(",", ""))
+                    print(f"✅ AlanChand fiat price for {symbol}: {price_in_toman:,.0f} تومان", flush=True)
+                    return {"symbol": symbol, "price": price_in_toman}
+                except (ValueError, TypeError):
+                    pass
+
+        # حالت 2: داده‌ها در یک لیست قرار دارند
+        if "data" in all_data:
+            items = all_data["data"]
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict):
+                        item_symbol = str(item.get("symbol", "")).lower()
+                        if item_symbol == symbol_lower:
+                            price = item.get("price") or item.get("value") or item.get("close")
+                            if price is not None:
+                                try:
+                                    price_in_toman = float(str(price).replace(",", ""))
+                                    print(f"✅ AlanChand fiat price for {symbol}: {price_in_toman:,.0f} تومان", flush=True)
+                                    return {"symbol": symbol, "price": price_in_toman}
+                                except (ValueError, TypeError):
+                                    pass
+
+        print(f"⚠️ AlanChand fiat: symbol {symbol} not found in response", flush=True)
+        return None
+    except Exception as e:
+        print(f"⚠️ AlanChand fiat failed for {symbol}: {type(e).__name__}", flush=True)
         return None
 
 
