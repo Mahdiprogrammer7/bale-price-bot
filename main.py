@@ -299,13 +299,36 @@ async def is_favorite(chat_id, asset_key):
 
 
 # ============================================================
-# --- دریافت قیمت‌ها ---
+# --- دریافت قیمت رمزارز با چند API جایگزین ---
 # ============================================================
 
 def fetch_crypto_data(symbol: str):
+    """دریافت قیمت رمزارز با چند API جایگزین"""
     symbol = symbol.strip().upper()
+
+    # ۱. اول از آبان‌تتر امتحان کن
+    data = _fetch_abantether(symbol)
+    if data:
+        return data
+
+    # ۲. اگه آبان‌تتر جواب نداد، از Nobitex امتحان کن
+    data = _fetch_nobitex(symbol)
+    if data:
+        return data
+
+    # ۳. اگه Nobitex هم جواب نداد، از Wallex امتحان کن
+    data = _fetch_wallex(symbol)
+    if data:
+        return data
+
+    print(f"❌ همه APIها برای {symbol} ناموفق بودن", flush=True)
+    return None
+
+
+def _fetch_abantether(symbol):
+    """دریافت از آبان‌تتر"""
     try:
-        response = requests.get(CRYPTO_API_URL, timeout=10)
+        response = requests.get(CRYPTO_API_URL, timeout=15)
         response.raise_for_status()
         market = response.json()
         markets_data = market.get("data", {}).get("markets", {})
@@ -343,7 +366,61 @@ def fetch_crypto_data(symbol: str):
             return {"symbol": target_key, "buy_price": buy_price, "sell_price": sell_price, "change": change}
         return None
     except Exception as e:
-        print(f"API Error (Crypto): {e}", flush=True)
+        print(f"⚠️ Abantether failed for {symbol}: {type(e).__name__}", flush=True)
+        return None
+
+
+def _fetch_nobitex(symbol):
+    """دریافت از Nobitex (پشتیبان اول)"""
+    try:
+        url = f"https://api.nobitex.ir/v2/orderbook/{symbol}IRT"
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("status") == "ok":
+            last_price = data.get("lastTradePrice")
+            if last_price:
+                # قیمت به ریاله، تقسیم بر 10 برای تومان
+                price_in_toman = float(last_price) / 10
+                return {
+                    "symbol": symbol,
+                    "buy_price": price_in_toman,
+                    "sell_price": price_in_toman,
+                    "change": None
+                }
+        return None
+    except Exception as e:
+        print(f"⚠️ Nobitex failed for {symbol}: {type(e).__name__}", flush=True)
+        return None
+
+
+def _fetch_wallex(symbol):
+    """دریافت از Wallex (پشتیبان دوم)"""
+    try:
+        url = "https://api.wallex.ir/v1/markets"
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("success"):
+            symbols = data.get("result", {}).get("symbols", {})
+            key = f"{symbol}IRT"
+            if key in symbols:
+                stats = symbols[key].get("stats", {})
+                last_price = stats.get("lastPrice")
+                if last_price:
+                    # قیمت به ریاله
+                    price_in_toman = float(last_price) / 10
+                    return {
+                        "symbol": symbol,
+                        "buy_price": price_in_toman,
+                        "sell_price": price_in_toman,
+                        "change": None
+                    }
+        return None
+    except Exception as e:
+        print(f"⚠️ Wallex failed for {symbol}: {type(e).__name__}", flush=True)
         return None
 
 
@@ -873,7 +950,7 @@ async def alert_checker_async():
 
 
 # ============================================================
-# --- کانال اطلاع‌رسانی (اصلاح‌شده) ---
+# --- کانال اطلاع‌رسانی (با APIهای پشتیبان) ---
 # ============================================================
 
 def build_channel_post():
@@ -915,7 +992,7 @@ def build_channel_post():
     # ===== رمزارزها =====
     lines.append("🪙 **رمزارزها:**")
     crypto_found = False
-    for sym in ["BTC", "ETH", "USDT"]:
+    for sym in ["BTC", "ETH", "USDT", "BNB", "SOL"]:
         try:
             data = fetch_crypto_data(sym)
             if data and data.get("buy_price"):
