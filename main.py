@@ -24,6 +24,7 @@ GOLD_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/gol
 
 # 📢 کانال اطلاع‌رسانی
 CHANNEL_ID = "@nabz_mediaa"
+CHANNEL_LINK = "https://ble.ir/nabz_mediaa"
 CHANNEL_POST_INTERVAL = 3600
 CHANNEL_POST_ENABLED = True
 
@@ -31,6 +32,9 @@ CHANNEL_POST_ENABLED = True
 USE_PROXY = True
 PROXY_URL = "https://red-meadow-20f7bale-bot-proxy.najafimahdi13867.workers.dev"
 WELCOME_IMAGE_URL = ""
+
+# 🔗 لینک ربات برای سیستم دعوت
+BOT_USERNAME = "onlinearzmonybot"  # بدون @
 # ==================================================
 
 
@@ -56,6 +60,8 @@ TRANSLATIONS = {
         "menu_myalerts": "📋 هشدارهای من",
         "menu_list": "📊 لیست رمزارزها",
         "menu_profile": "👤 پروفایل من",
+        "menu_invite": "🎁 دعوت دوستان",
+        "menu_leaderboard": "🏆 جدول قهرمانان",
         "menu_main": "🏠 منوی اصلی",
         "menu_back": "🔙 بازگشت",
         "menu_cancel": "❌ انصراف",
@@ -64,6 +70,7 @@ TRANSLATIONS = {
         "profile_phone": "📱 شماره: `{phone}`",
         "profile_lang": "🌐 زبان: {lang_name}",
         "profile_joined": "📅 تاریخ عضویت: {date}",
+        "profile_invites": "🎁 تعداد دعوت‌شده‌ها: *{count}* نفر",
         "profile_change_lang": "🌐 تغییر زبان",
         "cancel": "✅ عملیات لغو شد.",
         "error": "❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.",
@@ -72,6 +79,22 @@ TRANSLATIONS = {
         "fiat_title": "💵 *ارزهای فیات*\n\nیکی از ارزها را انتخاب کنید:",
         "gold_title": "🥇 *طلا و سکه*\n\nیکی از گزینه‌ها را انتخاب کنید:",
         "footer": "\n\n━━━━━━━━━━━━━━━━━━\n👨‍💻 توسعه‌دهنده: *{dev}*\n📩 انتقادات: {feedback}",
+        "force_join_title": "⚠️ *دسترسی محدود*",
+        "force_join_text": "برای استفاده از ربات، لطفاً اول در کانال ما عضو شوید:\n\n📢 {channel}\n\nبعد از عضویت، روی دکمه زیر کلیک کنید:",
+        "force_join_btn": "✅ عضو شدم",
+        "force_join_verify": "🔄 بررسی عضویت",
+        "force_join_not_member": "❌ شما هنوز در کانال عضو نشده‌اید.\n\nلطفاً ابتدا در کانال عضو شوید و سپس دکمه بررسی را بزنید.",
+        "invite_title": "🎁 *سیستم دعوت دوستان*",
+        "invite_link": "🔗 لینک دعوت اختصاصی شما:",
+        "invite_stats": "📊 *آمار شما:*",
+        "invite_count": "• تعداد دعوت‌شده‌ها: *{count}* نفر",
+        "invite_rank": "• رتبه شما: *#{rank}*",
+        "invite_reward": "\n🎁 *پاداش:*\n• ۵ دعوت: هشدار ویژه رایگان\n• ۱۰ دعوت: پشتیبانی VIP\n• ۲۰ دعوت: دسترسی ویژه",
+        "invite_copy": "📋 کپی لینک دعوت",
+        "leaderboard_title": "🏆 *جدول قهرمانان*",
+        "leaderboard_you": "\n📍 رتبه شما: *#{rank}* با *{count}* دعوت",
+        "leaderboard_empty": "هنوز هیچ کاربری کسی رو دعوت نکرده. اولین نفر باش!",
+        "share_btn": "📤 اشتراک‌گذاری با دوستان",
     },
     "en": {
         "choose_language": "🌐 Please choose your language:",
@@ -91,6 +114,8 @@ TRANSLATIONS = {
         "menu_myalerts": "📋 My Alerts",
         "menu_list": "📊 Crypto List",
         "menu_profile": "👤 My Profile",
+        "menu_invite": "🎁 Invite Friends",
+        "menu_leaderboard": "🏆 Leaderboard",
         "menu_main": "🏠 Main Menu",
         "menu_back": "🔙 Back",
         "menu_cancel": "❌ Cancel",
@@ -99,6 +124,7 @@ TRANSLATIONS = {
         "profile_phone": "📱 Phone: `{phone}`",
         "profile_lang": "🌐 Language: {lang_name}",
         "profile_joined": "📅 Joined: {date}",
+        "profile_invites": "🎁 Invited: *{count}* users",
         "profile_change_lang": "🌐 Change Language",
         "cancel": "✅ Operation cancelled.",
         "error": "❌ An error occurred. Please try again.",
@@ -107,6 +133,22 @@ TRANSLATIONS = {
         "fiat_title": "💵 *Fiat Currencies*\n\nChoose a currency:",
         "gold_title": "🥇 *Gold & Coins*\n\nChoose an option:",
         "footer": "\n\n━━━━━━━━━━━━━━━━━━\n👨‍💻 Developer: *{dev}*\n📩 Feedback: {feedback}",
+        "force_join_title": "⚠️ *Access Restricted*",
+        "force_join_text": "To use the bot, please join our channel first:\n\n📢 {channel}\n\nAfter joining, click the button below:",
+        "force_join_btn": "✅ I Joined",
+        "force_join_verify": "🔄 Verify Membership",
+        "force_join_not_member": "❌ You haven't joined the channel yet.\n\nPlease join first, then click verify.",
+        "invite_title": "🎁 *Referral System*",
+        "invite_link": "🔗 Your personal invite link:",
+        "invite_stats": "📊 *Your Stats:*",
+        "invite_count": "• Invited users: *{count}*",
+        "invite_rank": "• Your rank: *#{rank}*",
+        "invite_reward": "\n🎁 *Rewards:*\n• 5 invites: Free special alert\n• 10 invites: VIP support\n• 20 invites: Special access",
+        "invite_copy": "📋 Copy invite link",
+        "leaderboard_title": "🏆 *Leaderboard*",
+        "leaderboard_you": "\n📍 Your rank: *#{rank}* with *{count}* invites",
+        "leaderboard_empty": "Nobody has invited anyone yet. Be the first!",
+        "share_btn": "📤 Share with friends",
     }
 }
 
@@ -157,6 +199,7 @@ _sent_channel_message_ids = set()
 _channel_thread_started = False
 _checker_thread_started = False
 _user_lang_cache = {}
+_force_join_cache = {}  # {user_id: timestamp}
 
 # ============================================================
 #       دیتابیس
@@ -165,10 +208,11 @@ db_client = None
 alerts_collection = None
 favorites_collection = None
 users_collection = None
+referrals_collection = None
 
 
 async def init_db():
-    global db_client, alerts_collection, favorites_collection, users_collection
+    global db_client, alerts_collection, favorites_collection, users_collection, referrals_collection
     if not MONGO_URI:
         return False
     try:
@@ -178,6 +222,7 @@ async def init_db():
         alerts_collection = db["alerts"]
         favorites_collection = db["favorites"]
         users_collection = db["users"]
+        referrals_collection = db["referrals"]
         print("✅ اتصال به MongoDB با موفقیت برقرار شد!", flush=True)
         return True
     except Exception as e:
@@ -263,7 +308,7 @@ async def get_user(chat_id):
         return None
 
 
-async def create_user(chat_id, name, phone, language):
+async def create_user(chat_id, name, phone, language, referred_by=None):
     if users_collection is None:
         return False
     try:
@@ -273,12 +318,27 @@ async def create_user(chat_id, name, phone, language):
                 {"chat_id": str(chat_id)},
                 {"$set": {"name": name, "phone": phone, "language": language, "updated_at": time.time()}}
             )
+            return True
         else:
-            await users_collection.insert_one({
+            doc = {
                 "chat_id": str(chat_id), "name": name, "phone": phone,
-                "language": language, "created_at": time.time()
-            })
-        return True
+                "language": language, "created_at": time.time(),
+                "referred_by": referred_by, "invite_count": 0
+            }
+            await users_collection.insert_one(doc)
+            # ثبت در referrals
+            if referred_by and referrals_collection is not None:
+                await referrals_collection.insert_one({
+                    "referrer": str(referred_by),
+                    "referred": str(chat_id),
+                    "created_at": time.time()
+                })
+                # آپدیت invite_count
+                await users_collection.update_one(
+                    {"chat_id": str(referred_by)},
+                    {"$inc": {"invite_count": 1}}
+                )
+            return True
     except Exception as e:
         print(f"❌ create_user error: {e}", flush=True)
         return False
@@ -298,6 +358,49 @@ def clear_lang_cache(chat_id):
     chat_id_str = str(chat_id)
     if chat_id_str in _user_lang_cache:
         del _user_lang_cache[chat_id_str]
+
+
+async def get_users_count():
+    if users_collection is None:
+        return 0
+    try:
+        return await users_collection.count_documents({})
+    except:
+        return 0
+
+
+async def get_invite_count(chat_id):
+    if users_collection is None:
+        return 0
+    try:
+        user = await users_collection.find_one({"chat_id": str(chat_id)})
+        return user.get("invite_count", 0) if user else 0
+    except:
+        return 0
+
+
+async def get_user_rank(chat_id):
+    """رتبه کاربر بر اساس تعداد دعوت‌شده"""
+    if users_collection is None:
+        return 0
+    try:
+        # تعداد کاربرانی که بیشتر از این کاربر دعوت کردن
+        my_count = await get_invite_count(chat_id)
+        higher = await users_collection.count_documents({"invite_count": {"$gt": my_count}})
+        return higher + 1
+    except:
+        return 0
+
+
+async def get_leaderboard(limit=10):
+    """گرفتن برترین دعوت‌کنندگان"""
+    if users_collection is None:
+        return []
+    try:
+        cursor = users_collection.find({"invite_count": {"$gt": 0}}).sort("invite_count", -1).limit(limit)
+        return await cursor.to_list(length=limit)
+    except:
+        return []
 
 
 # --- توابع دیتابیس: هشدارها ---
@@ -357,6 +460,28 @@ async def get_user_favorites(chat_id):
 async def is_favorite(chat_id, asset_key):
     favs = await get_user_favorites(chat_id)
     return asset_key in favs
+
+
+# --- عضویت اجباری ---
+async def check_channel_membership(user_id):
+    """بررسی عضویت کاربر در کانال با استفاده از Bot API"""
+    now = time.time()
+    # کش 5 دقیقه‌ای برای جلوگیری از درخواست تکراری
+    if user_id in _force_join_cache and (now - _force_join_cache[user_id]) < 300:
+        return True  # اگه تو کش بود یعنی قبلاً تأیید شده
+    try:
+        response = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=int(user_id))
+        if response and hasattr(response, 'status'):
+            status = response.status
+            if status in ['member', 'administrator', 'creator']:
+                _force_join_cache[user_id] = now
+                return True
+        return False
+    except Exception as e:
+        print(f"⚠️ check membership error: {e}", flush=True)
+        # در صورت خطا، اجازه دسترسی می‌دهیم (محافظه‌کارانه)
+        _force_join_cache[user_id] = now
+        return True
 
 
 # --- قیمت‌ها ---
@@ -603,7 +728,31 @@ def main_menu_keyboard(lang="fa"):
     markup.add(InlineKeyboardButton(text=t("menu_alert", lang), callback_data="ALERT:NEW"), row=2)
     markup.add(InlineKeyboardButton(text=t("menu_myalerts", lang), callback_data="MENU:MYALERTS"), row=3)
     markup.add(InlineKeyboardButton(text=t("menu_list", lang), callback_data="MENU:LIST"), row=3)
-    markup.add(InlineKeyboardButton(text=t("menu_profile", lang), callback_data="MENU:PROFILE"), row=4)
+    markup.add(InlineKeyboardButton(text=t("menu_invite", lang), callback_data="MENU:INVITE"), row=4)
+    markup.add(InlineKeyboardButton(text=t("menu_leaderboard", lang), callback_data="MENU:LEADERBOARD"), row=4)
+    markup.add(InlineKeyboardButton(text=t("menu_profile", lang), callback_data="MENU:PROFILE"), row=5)
+    return markup
+
+
+def force_join_keyboard(lang="fa"):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(text=f"📢 {CHANNEL_ID}", url=CHANNEL_LINK), row=0)
+    markup.add(InlineKeyboardButton(text=t("force_join_verify", lang), callback_data="FORCEJOIN:VERIFY"), row=1)
+    return markup
+
+
+def invite_keyboard(lang="fa"):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(text=t("invite_copy", lang), callback_data="INVITE:COPY"), row=0)
+    markup.add(InlineKeyboardButton(text=t("menu_leaderboard", lang), callback_data="MENU:LEADERBOARD"), row=1)
+    markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=2)
+    return markup
+
+
+def leaderboard_keyboard(lang="fa"):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(text=t("menu_invite", lang), callback_data="MENU:INVITE"), row=0)
+    markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=1)
     return markup
 
 
@@ -643,8 +792,9 @@ def gold_menu_keyboard(lang="fa"):
 
 def profile_keyboard(lang="fa"):
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(text=t("profile_change_lang", lang), callback_data="MENU:LANG"), row=0)
-    markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=1)
+    markup.add(InlineKeyboardButton(text=t("menu_invite", lang), callback_data="MENU:INVITE"), row=0)
+    markup.add(InlineKeyboardButton(text=t("profile_change_lang", lang), callback_data="MENU:LANG"), row=1)
+    markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=2)
     return markup
 
 
@@ -800,15 +950,73 @@ async def show_profile(target, user_id, edit=False):
     created_at = user.get("created_at", 0)
     joined = time.strftime('%Y-%m-%d', time.localtime(created_at)) if created_at else "-"
     lang_name = LANG_NAMES.get(lang, lang)
+    invite_count = await get_invite_count(user_id)
     text = (
         f"{t('profile_title', lang)}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"{t('profile_name', lang, name=name)}\n"
         f"{t('profile_phone', lang, phone=phone)}\n"
         f"{t('profile_lang', lang, lang_name=lang_name)}\n"
-        f"{t('profile_joined', lang, date=joined)}"
+        f"{t('profile_joined', lang, date=joined)}\n"
+        f"{t('profile_invites', lang, count=invite_count)}"
     )
     markup = profile_keyboard(lang)
+    if edit:
+        try:
+            await target.edit(text + footer_text(lang), components=markup)
+            return
+        except:
+            pass
+    await target.reply(text + footer_text(lang), components=markup)
+
+
+async def show_invite(target, user_id, edit=False):
+    lang = await get_user_language(user_id)
+    invite_count = await get_invite_count(user_id)
+    rank = await get_user_rank(user_id)
+    invite_link = f"https://ble.ir/{BOT_USERNAME}?start={user_id}"
+    text = (
+        f"{t('invite_title', lang)}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"{t('invite_link', lang)}\n"
+        f"`{invite_link}`\n\n"
+        f"{t('invite_stats', lang)}\n"
+        f"{t('invite_count', lang, count=invite_count)}\n"
+        f"{t('invite_rank', lang, rank=rank)}"
+        f"{t('invite_reward', lang)}"
+    )
+    markup = invite_keyboard(lang)
+    if edit:
+        try:
+            await target.edit(text + footer_text(lang), components=markup)
+            return
+        except:
+            pass
+    await target.reply(text + footer_text(lang), components=markup)
+
+
+async def show_leaderboard(target, user_id, edit=False):
+    lang = await get_user_language(user_id)
+    top_users = await get_leaderboard(10)
+    my_count = await get_invite_count(user_id)
+    my_rank = await get_user_rank(user_id)
+
+    if not top_users:
+        text = t("leaderboard_title", lang) + "\n\n" + t("leaderboard_empty", lang)
+    else:
+        lines = [t("leaderboard_title", lang), "━━━━━━━━━━━━━━━━━━"]
+        medals = ["🥇", "🥈", "🥉"]
+        for idx, u in enumerate(top_users, 1):
+            medal = medals[idx - 1] if idx <= 3 else f"{idx}."
+            name = u.get("name", "کاربر")
+            count = u.get("invite_count", 0)
+            lines.append(f"{medal} {name} → *{count}* دعوت")
+        # اضافه کردن رتبه کاربر
+        lines.append("")
+        lines.append(t("leaderboard_you", lang, rank=my_rank, count=my_count))
+        text = "\n".join(lines)
+
+    markup = leaderboard_keyboard(lang)
     if edit:
         try:
             await target.edit(text + footer_text(lang), components=markup)
@@ -1091,9 +1299,70 @@ def build_channel_post():
             pass
     lines.append("")
     lines.append("━━━━━━━━━━━━━━━━━━")
+    # آمار زنده کاربران
+    try:
+        import asyncio as _asyncio
+        # نمي‌توانيم مستقيماً اينجا await کنيم چون thread جداگانه است
+        # پس از يه روش ساده‌تر استفاده مي‌کنيم
+        pass
+    except:
+        pass
     lines.append(f"🕐 {time.strftime('%Y-%m-%d %H:%M')}")
     lines.append("")
-    lines.append("📢 @nabz_mediaa")
+    lines.append(f"📢 {CHANNEL_ID}")
+    return "\n".join(lines)
+
+
+def build_channel_post_with_stats(users_count):
+    """نسخه کامل پست کانال با آمار زنده کاربران"""
+    lines = ["📊 **نرخ لحظه‌ای بازار**", "━━━━━━━━━━━━━━━━━━"]
+    lines.append("💵 **ارزهای فیات:**")
+    for sym in ["USD", "EUR", "AED", "TRY"]:
+        try:
+            data = fetch_fiat_data(sym)
+            if data and data.get("price"):
+                name = FIAT_NAMES.get(sym, sym)
+                lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
+        except:
+            pass
+    lines.append("")
+    lines.append("🥇 **طلا و سکه:**")
+    for asset in ["gold_18", "coin_emami", "coin_half"]:
+        try:
+            data = fetch_gold_data(asset)
+            if data and data.get("price"):
+                name = GOLD_NAMES.get(asset, asset)
+                lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
+        except:
+            pass
+    lines.append("")
+    lines.append("🪙 **رمزارزها:**")
+    for sym in ["BTC", "ETH", "USDT", "BNB", "SOL"]:
+        try:
+            data = fetch_crypto_data(sym)
+            if data and data.get("buy_price"):
+                price_val = data['buy_price']
+                try:
+                    price_num = float(price_val)
+                    if price_num >= 1_000_000_000_000:
+                        formatted = f"{price_num / 1_000_000_000_000:,.2f} همت"
+                    elif price_num >= 1_000_000_000:
+                        formatted = f"{price_num / 1_000_000_000:,.2f} میلیارد"
+                    elif price_num >= 1_000_000:
+                        formatted = f"{price_num / 1_000_000:,.2f} میلیون"
+                    else:
+                        formatted = format_price(price_num)
+                except:
+                    formatted = format_price(price_val)
+                lines.append(f"  • {sym}: **{formatted} تومان**")
+        except:
+            pass
+    lines.append("")
+    lines.append("━━━━━━━━━━━━━━━━━━")
+    lines.append(f"👥 **کاربران ربات:** *{users_count:,}* نفر")
+    lines.append(f"🕐 {time.strftime('%Y-%m-%d %H:%M')}")
+    lines.append("")
+    lines.append(f"📢 {CHANNEL_ID}")
     return "\n".join(lines)
 
 
@@ -1104,7 +1373,16 @@ def channel_poster():
         try:
             time.sleep(CHANNEL_POST_INTERVAL)
             if CHANNEL_POST_ENABLED and CHANNEL_ID:
-                post_text = build_channel_post()
+                # گرفتن آمار کاربران از thread اصلی
+                users_count = 0
+                try:
+                    if MAIN_LOOP is not None:
+                        future_count = asyncio.run_coroutine_threadsafe(get_users_count(), MAIN_LOOP)
+                        users_count = future_count.result(timeout=10)
+                except Exception as e:
+                    print(f"⚠️ get count error: {e}", flush=True)
+
+                post_text = build_channel_post_with_stats(users_count)
                 try:
                     if MAIN_LOOP is not None:
                         future = asyncio.run_coroutine_threadsafe(bot.send_message(CHANNEL_ID, post_text), MAIN_LOOP)
@@ -1200,7 +1478,25 @@ async def on_message(message: Message):
     text = message.content.strip()
     text_upper = text.upper()
 
-    # وضعیت‌های ثبت‌نام / زبان
+    # ============================================================
+    #       بررسی عضویت اجباری (Force Join)
+    # ============================================================
+    # فقط برای کاربرانی که ثبت‌نام کردن
+    if text not in ['/start', '/language'] and user_id not in user_states:
+        user = await get_user(user_id)
+        if user:
+            is_member = await check_channel_membership(user_id)
+            if not is_member:
+                lang = await get_user_language(user_id)
+                await message.reply(
+                    t("force_join_title", lang) + "\n\n" + t("force_join_text", lang, channel=CHANNEL_ID),
+                    components=force_join_keyboard(lang)
+                )
+                return
+
+    # ============================================================
+    #       وضعیت‌های ثبت‌نام / زبان
+    # ============================================================
     if user_id in user_states:
         state = user_states[user_id]["state"]
         data = user_states[user_id].get("data", {})
@@ -1220,7 +1516,8 @@ async def on_message(message: Message):
             if not re.match(r'^09\d{9}$', clean_phone):
                 await message.reply(t("invalid_phone", lang))
                 return
-            ok = await create_user(user_id, data.get("name", ""), clean_phone, lang)
+            referred_by = data.get("referred_by")
+            ok = await create_user(user_id, data.get("name", ""), clean_phone, lang, referred_by=referred_by)
             clear_state(user_id)
             clear_lang_cache(user_id)
             if not ok:
@@ -1269,15 +1566,34 @@ async def on_message(message: Message):
                 await message.reply("❌ عدد معتبر وارد کنید." + footer_text(lang))
             return
 
-    # دستورات
-    if text == '/start':
+    # ============================================================
+    #                       دستور /start
+    # ============================================================
+    if text.startswith('/start'):
+        # استخراج پارامتر referral
+        referred_by = None
+        parts = text.split()
+        if len(parts) > 1:
+            referrer_id = parts[1].strip()
+            if referrer_id.isdigit() and referrer_id != user_id:
+                referred_by = referrer_id
+                print(f"🎁 New user {user_id} referred by {referred_by}", flush=True)
+
         user = await get_user(user_id)
         if user:
             lang = user.get("language", "fa")
             _user_lang_cache[user_id] = lang
+            # چک عضویت
+            is_member = await check_channel_membership(user_id)
+            if not is_member:
+                await message.reply(
+                    t("force_join_title", lang) + "\n\n" + t("force_join_text", lang, channel=CHANNEL_ID),
+                    components=force_join_keyboard(lang)
+                )
+                return
             await show_main_menu(message, user_id)
         else:
-            user_states[user_id] = {"state": "awaiting_language", "data": {}}
+            user_states[user_id] = {"state": "awaiting_language", "data": {"referred_by": referred_by}}
             await message.reply(t("choose_language", "fa"), components=language_keyboard())
         return
 
@@ -1294,6 +1610,14 @@ async def on_message(message: Message):
     if text == '/language':
         user_states[user_id] = {"state": "changing_language", "data": {}}
         await message.reply(t("choose_language", "fa") + " / " + t("choose_language", "en"), components=language_keyboard())
+        return
+
+    if text == '/invite':
+        await show_invite(message, user_id)
+        return
+
+    if text == '/top':
+        await show_leaderboard(message, user_id)
         return
 
     if text == '/menu':
@@ -1393,7 +1717,7 @@ async def on_message(message: Message):
 
 
 # ============================================================
-#     رویداد کلیک روی دکمه‌ها (بدون callback.answer)
+#     رویداد کلیک روی دکمه‌ها
 # ============================================================
 @bot.event
 async def on_callback(callback: CallbackQuery):
@@ -1426,11 +1750,34 @@ async def on_callback(callback: CallbackQuery):
                 await show_main_menu(callback.message, user_id, edit=True)
                 return
 
-        user_states[user_id] = {"state": "awaiting_name", "data": {"lang": new_lang}}
+        # کاربر جدید در حال ثبت‌نام - حفظ referred_by
+        current_data = user_states.get(user_id, {}).get("data", {})
+        referred_by = current_data.get("referred_by")
+        user_states[user_id] = {"state": "awaiting_name", "data": {"lang": new_lang, "referred_by": referred_by}}
         try:
             await callback.message.edit(t("welcome_new", new_lang))
         except:
             await callback.message.reply(t("welcome_new", new_lang))
+        return
+
+    # بررسی عضویت (Force Join)
+    if data == "FORCEJOIN:VERIFY":
+        user = await get_user(user_id)
+        lang = user.get("language", "fa") if user else "fa"
+        is_member = await check_channel_membership(user_id)
+        if is_member:
+            await show_main_menu(callback.message, user_id, edit=True)
+        else:
+            try:
+                await callback.message.edit(
+                    t("force_join_not_member", lang),
+                    components=force_join_keyboard(lang)
+                )
+            except:
+                await callback.message.reply(
+                    t("force_join_not_member", lang),
+                    components=force_join_keyboard(lang)
+                )
         return
 
     user = await get_user(user_id)
@@ -1450,6 +1797,22 @@ async def on_callback(callback: CallbackQuery):
 
     if data == "MENU:PROFILE":
         await show_profile(callback.message, user_id, edit=True)
+        return
+
+    if data == "MENU:INVITE":
+        await show_invite(callback.message, user_id, edit=True)
+        return
+
+    if data == "MENU:LEADERBOARD":
+        await show_leaderboard(callback.message, user_id, edit=True)
+        return
+
+    if data == "INVITE:COPY":
+        invite_link = f"https://ble.ir/{BOT_USERNAME}?start={user_id}"
+        await callback.message.reply(
+            f"📋 لینک دعوت شما:\n`{invite_link}`\n\n"
+            "روی متن بالا کلیک کنید تا کپی شود." + footer_text(lang)
+        )
         return
 
     if data == "MENU:LANG":
