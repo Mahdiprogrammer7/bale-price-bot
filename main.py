@@ -77,6 +77,9 @@ TRANSLATIONS = {
         "profile_joined": "📅 تاریخ عضویت: {date}",
         "profile_invites": "🎁 تعداد دعوت‌شده‌ها: *{count}* نفر",
         "profile_change_lang": "🌐 تغییر زبان",
+        "profile_logout": "🚪 خروج از حساب",
+        "logout_confirm": "⚠️ با خروج از حساب، پروفایل فعلی شما از حالت فعال خارج می‌شود و برای ورود بعدی باید دوباره ثبت‌نام کنید. اطلاعات قدیمی کاربران دیگر با این کار آسیب نمی‌بیند.\n\nآیا مطمئن هستید؟",
+        "logout_done": "✅ از حساب خارج شدید.\n\nبرای ساخت پروفایل جدید، /start را بزنید.",
         "cancel": "✅ عملیات لغو شد.",
         "error": "❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.",
         "not_found": "❌ یافت نشد.",
@@ -131,6 +134,9 @@ TRANSLATIONS = {
         "profile_joined": "📅 Joined: {date}",
         "profile_invites": "🎁 Invited: *{count}* users",
         "profile_change_lang": "🌐 Change Language",
+        "profile_logout": "🚪 Log out",
+        "logout_confirm": "⚠️ Logging out deactivates your current profile. You can register again with /start. Existing users are not affected.\n\nAre you sure?",
+        "logout_done": "✅ You have logged out.\n\nUse /start to create/register your profile again.",
         "cancel": "✅ Operation cancelled.",
         "error": "❌ An error occurred. Please try again.",
         "not_found": "❌ Not found.",
@@ -364,6 +370,53 @@ async def get_user(chat_id):
         return None
 
 
+async def get_active_user(chat_id):
+    """فقط حساب فعال را برمی‌گرداند؛ حسابی که کاربر عمداً از آن خارج شده فعال محسوب نمی‌شود."""
+    user = await get_user(chat_id)
+    if user and user.get("account_status", "active") != "logged_out":
+        return user
+    return None
+
+
+async def logout_user(chat_id):
+    """خروج نرم: رکورد حذف نمی‌شود تا سابقه و آمار حفظ شود، اما حساب برای /start بعدی غیرفعال می‌شود."""
+    if users_collection is None:
+        return False
+    try:
+        user = await get_user(chat_id)
+        if not user:
+            return False
+        await users_collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "account_status": "logged_out",
+                "logged_out_at": time.time(),
+                "updated_at": time.time()
+            }, "$unset": {"phone": ""}}
+        )
+        clear_state(str(chat_id))
+        clear_lang_cache(str(chat_id))
+        clear_force_join_cache(str(chat_id))
+        return True
+    except Exception as e:
+        print(f"❌ logout_user error: {e}", flush=True)
+        return False
+
+
+async def set_user_blocked(chat_id, blocked=True):
+    if users_collection is None:
+        return False
+    try:
+        user = await get_user(chat_id)
+        if not user:
+            return False
+        await users_collection.update_one({"_id": user["_id"]}, {"$set": {"blocked": bool(blocked), "updated_at": time.time()}})
+        return True
+    except Exception as e:
+        print(f"❌ set_user_blocked error: {e}", flush=True)
+        return False
+
+
 async def create_user(chat_id, name, phone=None, language="fa", referred_by=None):
     """ثبت/به‌روزرسانی کاربر.
 
@@ -383,6 +436,7 @@ async def create_user(chat_id, name, phone=None, language="fa", referred_by=None
             update = {
                 "name": name or existing.get("name", "کاربر"),
                 "language": language or existing.get("language", "fa"),
+                "account_status": "active",
                 "updated_at": time.time(),
                 "last_seen_at": time.time(),
             }
@@ -403,6 +457,8 @@ async def create_user(chat_id, name, phone=None, language="fa", referred_by=None
             "created_at": time.time(),
             "updated_at": time.time(),
             "last_seen_at": time.time(),
+            "account_status": "active",
+            "blocked": False,
             "referred_by": str(referred_by) if referred_by else None,
             "invite_count": 0,
         }
@@ -1017,7 +1073,15 @@ def profile_keyboard(lang="fa"):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton(text=t("menu_invite", lang), callback_data="MENU:INVITE"), row=0)
     markup.add(InlineKeyboardButton(text=t("profile_change_lang", lang), callback_data="MENU:LANG"), row=1)
-    markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=2)
+    markup.add(InlineKeyboardButton(text=t("profile_logout", lang), callback_data="PROFILE:LOGOUT"), row=2)
+    markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=3)
+    return markup
+
+
+def logout_confirm_keyboard(lang="fa"):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(text="✅ بله، خروج", callback_data="PROFILE:LOGOUT:CONFIRM"), row=0)
+    markup.add(InlineKeyboardButton(text="❌ انصراف", callback_data="MENU:PROFILE"), row=1)
     return markup
 
 
@@ -1149,7 +1213,7 @@ def fav_view_keyboard(lang="fa"):
 
 async def show_main_menu(target, user_id, edit=False):
     lang = await get_user_language(user_id)
-    user = await get_user(user_id)
+    user = await get_active_user(user_id)
     name = user.get("name", "کاربر") if user else "کاربر"
     text = (
         f"✨ *ارز آنلاین* ✨\n\n"
@@ -1642,7 +1706,7 @@ def is_admin(user_id):
 
 def admin_keyboard():
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(text="📊 آمار کلی", callback_data="ADMIN:STATS"), row=0)
+    markup.add(InlineKeyboardButton(text="📊 داشبورد", callback_data="ADMIN:STATS"), row=0)
     markup.add(InlineKeyboardButton(text="👥 کاربران", callback_data="ADMIN:USERS:0"), row=1)
     markup.add(InlineKeyboardButton(text="🔎 جستجوی کاربر", callback_data="ADMIN:SEARCH"), row=1)
     markup.add(InlineKeyboardButton(text="📢 ارسال پیام همگانی", callback_data="ADMIN:BROADCAST"), row=2)
@@ -1660,27 +1724,37 @@ def admin_back_keyboard():
 
 
 async def admin_stats_text():
+    now = time.time()
     users_count = await users_collection.count_documents({}) if users_collection is not None else 0
+    active_users = await users_collection.count_documents({"account_status": {"$ne": "logged_out"}, "blocked": {"$ne": True}}) if users_collection is not None else 0
+    logged_out = await users_collection.count_documents({"account_status": "logged_out"}) if users_collection is not None else 0
+    blocked = await users_collection.count_documents({"blocked": True}) if users_collection is not None else 0
+    active_24h = await users_collection.count_documents({"last_seen_at": {"$gte": now - 86400}, "account_status": {"$ne": "logged_out"}}) if users_collection is not None else 0
+    active_7d = await users_collection.count_documents({"last_seen_at": {"$gte": now - 7*86400}, "account_status": {"$ne": "logged_out"}}) if users_collection is not None else 0
+    active_30d = await users_collection.count_documents({"last_seen_at": {"$gte": now - 30*86400}, "account_status": {"$ne": "logged_out"}}) if users_collection is not None else 0
+    new_24h = await users_collection.count_documents({"created_at": {"$gte": now - 86400}}) if users_collection is not None else 0
+    new_7d = await users_collection.count_documents({"created_at": {"$gte": now - 7*86400}}) if users_collection is not None else 0
     alerts_count = await alerts_collection.count_documents({}) if alerts_collection is not None else 0
     favs_count = await favorites_collection.count_documents({}) if favorites_collection is not None else 0
     refs_count = await referrals_collection.count_documents({}) if referrals_collection is not None else 0
-    legacy_phone_count = 0
-    active_24h = 0
-    if users_collection is not None:
-        legacy_phone_count = await users_collection.count_documents({"phone": {"$exists": True, "$ne": ""}})
-        active_24h = await users_collection.count_documents({"last_seen_at": {"$gte": time.time() - 86400}})
+    legacy_phone_count = await users_collection.count_documents({"phone": {"$exists": True, "$ne": ""}}) if users_collection is not None else 0
     return (
-        "👨‍💻 **پنل مدیریت ارز آنلاین**\n"
+        "👨‍💻 **داشبورد مدیریت ارز آنلاین**\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        f"👥 کل کاربران: **{users_count:,}**\n"
-        f"🟢 فعال در ۲۴ ساعت اخیر: **{active_24h:,}**\n"
-        f"📱 کاربران قدیمی دارای شماره: **{legacy_phone_count:,}**\n"
+        f"👥 کل پروفایل‌ها: **{users_count:,}**\n"
+        f"🟢 حساب‌های فعال: **{active_users:,}**\n"
+        f"🚪 خارج‌شده‌ها: **{logged_out:,}**\n"
+        f"🚫 مسدودشده‌ها: **{blocked:,}**\n"
+        f"🟢 فعال ۲۴ ساعت: **{active_24h:,}**\n"
+        f"📅 فعال ۷ روز: **{active_7d:,}** | فعال ۳۰ روز: **{active_30d:,}**\n"
+        f"🆕 ثبت‌نام ۲۴ ساعت: **{new_24h:,}** | ۷ روز: **{new_7d:,}**\n"
+        "━━━━━━━━━━━━━━━━━━\n"
         f"🔔 هشدارهای فعال: **{alerts_count:,}**\n"
         f"⭐ علاقه‌مندی‌ها: **{favs_count:,}**\n"
-        f"🎁 Referralهای ثبت‌شده: **{refs_count:,}**\n"
-        f"🕐 آخرین بروزرسانی: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"🎁 Referralها: **{refs_count:,}**\n"
+        f"📱 کاربران دارای شماره قدیمی: **{legacy_phone_count:,}**\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        "از دکمه‌های زیر برای مدیریت بات استفاده کن."
+        f"🕐 بروزرسانی: {time.strftime('%Y-%m-%d %H:%M:%S')}"
     )
 
 
@@ -1703,7 +1777,8 @@ async def admin_users_page(page=0):
             name = str(u.get("name", "بدون نام"))[:28]
             uid = str(u.get("chat_id", "-"))
             phone_mark = "📱" if u.get("phone") else "👤"
-            lines.append(f"{i}. {phone_mark} **{name}**\n   ID: `{uid}`")
+            status_mark = "🚫" if u.get("blocked") else ("🚪" if u.get("account_status") == "logged_out" else "🟢")
+            lines.append(f"{i}. {status_mark}{phone_mark} **{name}**\n   ID: `{uid}`")
     markup = InlineKeyboardMarkup()
     for idx, u in enumerate(docs):
         uid = str(u.get("chat_id"))
@@ -1740,11 +1815,16 @@ async def admin_user_detail(chat_id):
         f"🎁 دعوت‌ها: **{user.get('invite_count', 0)}**\n"
         f"🔔 هشدارها: **{alerts_count}**\n"
         f"⭐ علاقه‌مندی‌ها: **{favs_count}**\n"
-        f"🔗 معرف: `{user.get('referred_by') or '-'} `"
+        f"🔗 معرف: `{user.get('referred_by') or '-'} `\n"
+        f"📌 وضعیت حساب: **{'مسدود' if user.get('blocked') else ('خارج‌شده' if user.get('account_status') == 'logged_out' else 'فعال')}**"
     )
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(text="🔙 کاربران", callback_data="ADMIN:USERS:0"), row=0)
-    markup.add(InlineKeyboardButton(text="🏠 پنل مدیریت", callback_data="ADMIN:HOME"), row=1)
+    if user.get("blocked"):
+        markup.add(InlineKeyboardButton(text="🟢 رفع مسدودی", callback_data=f"ADMIN:UNBLOCK:{chat_id}"), row=0)
+    else:
+        markup.add(InlineKeyboardButton(text="🚫 مسدود کردن", callback_data=f"ADMIN:BLOCK:{chat_id}"), row=0)
+    markup.add(InlineKeyboardButton(text="🔙 کاربران", callback_data="ADMIN:USERS:0"), row=1)
+    markup.add(InlineKeyboardButton(text="🏠 پنل مدیریت", callback_data="ADMIN:HOME"), row=2)
     return text, markup
 
 
@@ -1776,7 +1856,7 @@ async def admin_broadcast(admin_id, text):
         return 0, 0
     sent = 0
     failed = 0
-    cursor = users_collection.find({}, {"chat_id": 1})
+    cursor = users_collection.find({"account_status": {"$ne": "logged_out"}, "blocked": {"$ne": True}}, {"chat_id": 1})
     async for doc in cursor:
         uid = str(doc.get("chat_id", ""))
         if not uid:
@@ -1896,12 +1976,11 @@ async def on_message(message: Message):
                 await message.reply("❌ دیتابیس متصل نیست.", components=admin_back_keyboard())
                 clear_state(user_id)
                 return
-            docs = await users_collection.find({
-                "$or": [
-                    {"chat_id": query},
-                    {"name": {"$regex": re.escape(query), "$options": "i"}}
-                ]
-            }).limit(10).to_list(length=10)
+            search_filter = {"name": {"$regex": re.escape(query), "$options": "i"}}
+            if query:
+                variants = _chat_id_variants(query)
+                search_filter = {"$or": [{"chat_id": v} for v in variants] + [{"name": {"$regex": re.escape(query), "$options": "i"}}]}
+            docs = await users_collection.find(search_filter).limit(10).to_list(length=10)
             if not docs:
                 await message.reply("❌ کاربری با این مشخصات پیدا نشد.", components=admin_back_keyboard())
                 clear_state(user_id)
@@ -1919,16 +1998,22 @@ async def on_message(message: Message):
             return
 
     # ثبت آخرین فعالیت کاربران ثبت‌نام‌شده. این فیلد به Force Join یا ثبت‌نام جدید وابسته نیست.
-    existing_for_activity = await get_user(user_id)
+    existing_for_activity = await get_active_user(user_id)
     if existing_for_activity:
         await touch_user(user_id)
+
+    # حساب مسدودشده حتی در صورت عضویت کانال نباید از امکانات استفاده کند.
+    raw_user_for_block = await get_user(user_id)
+    if raw_user_for_block and raw_user_for_block.get("blocked") and not is_admin(user_id):
+        await message.reply("🚫 دسترسی این حساب توسط مدیریت محدود شده است.")
+        return
 
     # ============================================================
     #       بررسی عضویت اجباری (Force Join)
     # ============================================================
     # کاربر جدید هم قبل از شروع ثبت‌نام باید عضو کانال باشد.
     # اگر کاربر در مرحله ثبت‌نام است ولی هنوز عضو نشده، ادامه ثبت‌نام متوقف می‌شود.
-    existing_user = await get_user(user_id)
+    existing_user = await get_active_user(user_id)
     if existing_user:
         is_member = await check_channel_membership(user_id)
         if not is_member:
@@ -2059,7 +2144,7 @@ async def on_message(message: Message):
 
         # مهم: get_user هر دو نوع chat_id (قدیمی عددی و جدید رشته‌ای) را پیدا می‌کند؛
         # بنابراین کاربران قدیمی بعد از Deploy نباید دوباره ثبت‌نام شوند.
-        user = await get_user(user_id)
+        user = await get_active_user(user_id)
         if user:
             lang = user.get("language", "fa")
             _user_lang_cache[user_id] = lang
@@ -2273,6 +2358,18 @@ async def on_callback(callback: CallbackQuery):
                 await callback.message.edit(text, components=markup)
                 return
 
+            if data.startswith("ADMIN:BLOCK:") or data.startswith("ADMIN:UNBLOCK:"):
+                parts = data.split(":", 2)
+                uid = parts[2]
+                blocked = parts[1] == "BLOCK"
+                ok = await set_user_blocked(uid, blocked)
+                if ok:
+                    text, markup = await admin_user_detail(uid)
+                    await callback.message.edit(text, components=markup)
+                else:
+                    await callback.message.reply("❌ تغییر وضعیت کاربر انجام نشد.", components=admin_back_keyboard())
+                return
+
             if data == "ADMIN:SEARCH":
                 user_states[user_id] = {"state": "admin_search_waiting", "data": {}}
                 await callback.message.reply("🔎 **جستجوی کاربر**\n\nنام یا Chat ID کاربر را ارسال کن:")
@@ -2323,12 +2420,39 @@ async def on_callback(callback: CallbackQuery):
             return
 
     # ============================================================
+    # خروج از حساب
+    # ============================================================
+    if data == "PROFILE:LOGOUT":
+        user = await get_active_user(user_id)
+        lang = user.get("language", "fa") if user else "fa"
+        try:
+            await callback.message.edit(t("logout_confirm", lang), components=logout_confirm_keyboard(lang))
+        except:
+            await callback.message.reply(t("logout_confirm", lang), components=logout_confirm_keyboard(lang))
+        return
+
+    if data == "PROFILE:LOGOUT:CONFIRM":
+        user = await get_active_user(user_id)
+        lang = user.get("language", "fa") if user else "fa"
+        ok = await logout_user(user_id)
+        if ok:
+            await callback.message.edit(t("logout_done", lang))
+        else:
+            await callback.message.reply(t("error", lang))
+        return
+
+    raw_callback_user = await get_user(user_id)
+    if raw_callback_user and raw_callback_user.get("blocked") and not is_admin(user_id):
+        await callback.message.reply("🚫 دسترسی این حساب توسط مدیریت محدود شده است.")
+        return
+
+    # ============================================================
     # Force Join باید قبل از هر Callback مربوط به ثبت‌نام اجرا شود.
     # این ترتیب جلوی دور زدن عضویت با کلیک روی LANG را می‌گیرد.
     # ============================================================
     if data == "FORCEJOIN:VERIFY":
         clear_force_join_cache(user_id)
-        user = await get_user(user_id)
+        user = await get_active_user(user_id)
         pending = user_states.get(user_id, {})
         pending_data = pending.get("data", {})
 
