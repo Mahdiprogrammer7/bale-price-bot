@@ -67,6 +67,9 @@ TRANSLATIONS = {
         "menu_profile": "👤 پروفایل من",
         "menu_invite": "🎁 دعوت دوستان",
         "menu_leaderboard": "🏆 جدول قهرمانان",
+        "menu_help": "ℹ️ راهنما",
+        "help_title": "ℹ️ *راهنمای ارز آنلاین*",
+        "help_text": "به *ارز آنلاین* خوش آمدی! 👋\n\nاین بات برای دسترسی سریع به قیمت ارزها، رمزارزها، طلا و سکه و چند ابزار کاربردی بازار ساخته شده است.\n\n🪙 *ارز دیجیتال*\nقیمت رمزارزها را ببین و از فهرست رمزارزها استفاده کن.\n\n💵 *ارزهای فیات*\nقیمت ارزهای رایج مثل دلار و یورو را بررسی کن.\n\n🥇 *طلا و سکه*\nقیمت طلا و انواع سکه را مشاهده کن.\n\n🔄 *مبدل ارز*\nمقدار یک ارز را به ارز دیگر تبدیل کن.\n\n⭐ *علاقه‌مندی‌ها*\nدارایی‌های مورد علاقه‌ات را ذخیره کن تا سریع‌تر به آن‌ها دسترسی داشته باشی.\n\n🔔 *هشدار قیمت*\nبرای یک دارایی قیمت هدف تعیین کن تا در صورت رسیدن قیمت به محدوده موردنظر، هشدار دریافت کنی.\n\n📋 *هشدارهای من*\nهشدارهای فعال خودت را ببین و مدیریت کن.\n\n🎁 *دعوت دوستان*\nلینک دعوت اختصاصی بگیر و دوستانت را به بات دعوت کن.\n\n🏆 *جدول قهرمانان*\nآمار دعوت کاربران را مشاهده کن.\n\n👤 *پروفایل من*\nاطلاعات حساب و تنظیمات زبانت را مدیریت کن. از همین بخش می‌توانی از حساب خارج شوی و بعداً دوباره ثبت‌نام کنی.\n\n📌 *چند نکته*\n• برای استفاده از هر قابلیت، کافی است از منوی اصلی گزینه مربوط را انتخاب کنی.\n• قیمت‌ها ممکن است با توجه به منبع داده و زمان بروزرسانی تغییر کنند.\n• اگر مشکلی دیدی، از راه ارتباطی درج‌شده در پایین پیام‌ها استفاده کن.\n\n📢 *عضویت در کانال*\nبرای استفاده از بات، ابتدا باید عضو کانال اطلاع‌رسانی ارز آنلاین باشی. بعد از عضویت، دکمه «بررسی عضویت» را بزن تا دسترسی به بات فعال شود.\n\n📢 کانال: {channel}",
         "menu_main": "🏠 منوی اصلی",
         "menu_back": "🔙 بازگشت",
         "menu_cancel": "❌ انصراف",
@@ -124,6 +127,9 @@ TRANSLATIONS = {
         "menu_profile": "👤 My Profile",
         "menu_invite": "🎁 Invite Friends",
         "menu_leaderboard": "🏆 Leaderboard",
+        "menu_help": "ℹ️ Help",
+        "help_title": "ℹ️ *Arz Online Guide*",
+        "help_text": "Welcome to *Arz Online*! 👋\n\nThis bot gives you quick access to cryptocurrency, fiat currency, gold and coin prices, plus useful market tools.\n\n🪙 *Cryptocurrency*\nView cryptocurrency prices and browse the available coins.\n\n💵 *Fiat Currencies*\nCheck prices for common currencies such as USD and EUR.\n\n🥇 *Gold & Coins*\nView gold and coin prices.\n\n🔄 *Currency Converter*\nConvert an amount from one supported currency or asset to another.\n\n⭐ *Favorites*\nSave assets you use often for quicker access.\n\n🔔 *Price Alert*\nSet a target price and receive an alert when the selected asset reaches it.\n\n📋 *My Alerts*\nView and manage your active price alerts.\n\n🎁 *Invite Friends*\nGet your personal invite link and invite friends to the bot.\n\n🏆 *Leaderboard*\nView invitation statistics and rankings.\n\n👤 *My Profile*\nManage your account information and language. You can also log out and register again later.\n\n📌 *A few notes*\n• Choose any feature directly from the main menu.\n• Prices may change depending on the data source and update time.\n• If you have a problem, use the contact information shown at the bottom of messages.\n\n📢 *Channel Membership*\nTo use the bot, first join the Arz Online information channel. After joining, press the membership verification button to activate access.\n\n📢 Channel: {channel}",
         "menu_main": "🏠 Main Menu",
         "menu_back": "🔙 Back",
         "menu_cancel": "❌ Cancel",
@@ -1010,6 +1016,7 @@ def main_menu_keyboard(lang="fa"):
     markup.add(InlineKeyboardButton(text=t("menu_invite", lang), callback_data="MENU:INVITE"), row=4)
     markup.add(InlineKeyboardButton(text=t("menu_leaderboard", lang), callback_data="MENU:LEADERBOARD"), row=4)
     markup.add(InlineKeyboardButton(text=t("menu_profile", lang), callback_data="MENU:PROFILE"), row=5)
+    markup.add(InlineKeyboardButton(text=t("menu_help", lang), callback_data="MENU:HELP"), row=6)
     return markup
 
 
@@ -1032,6 +1039,12 @@ def leaderboard_keyboard(lang="fa"):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton(text=t("menu_invite", lang), callback_data="MENU:INVITE"), row=0)
     markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=1)
+    return markup
+
+
+def help_keyboard(lang="fa"):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=0)
     return markup
 
 
@@ -1223,6 +1236,19 @@ async def show_main_menu(target, user_id, edit=False):
         "⚡ سریع • دقیق • همیشه در دسترس"
     )
     markup = main_menu_keyboard(lang)
+    if edit:
+        try:
+            await target.edit(text + footer_text(lang), components=markup)
+            return
+        except:
+            pass
+    await target.reply(text + footer_text(lang), components=markup)
+
+
+async def show_help(target, user_id, edit=False):
+    lang = await get_user_language(user_id)
+    text = t("help_title", lang) + "\n\n" + t("help_text", lang).format(channel=CHANNEL_ID)
+    markup = help_keyboard(lang)
     if edit:
         try:
             await target.edit(text + footer_text(lang), components=markup)
@@ -2209,6 +2235,10 @@ async def on_message(message: Message):
         await message.reply(t("choose_language", "fa") + " / " + t("choose_language", "en"), components=language_keyboard())
         return
 
+    if text == '/help' or text == 'راهنما':
+        await show_help(message, user_id)
+        return
+
     if text == '/invite':
         await show_invite(message, user_id)
         return
@@ -2575,6 +2605,10 @@ async def on_callback(callback: CallbackQuery):
     if data == "MENU:MAIN":
         clear_state(user_id)
         await show_main_menu(callback.message, user_id, edit=True)
+        return
+
+    if data == "MENU:HELP":
+        await show_help(callback.message, user_id, edit=True)
         return
 
     if data == "MENU:PROFILE":
