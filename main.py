@@ -325,12 +325,42 @@ def get_asset_display_name(asset_key):
 
 
 # --- توابع دیتابیس: کاربران ---
+def _chat_id_variants(chat_id):
+    """شناسه کاربر را به شکل‌های سازگار با نسخه‌های قدیمی/جدید آماده می‌کند.
+
+    نسخه‌های قدیمی ممکن است chat_id را به صورت عددی در MongoDB ذخیره کرده باشند،
+    در حالی که نسخه جدید آن را به صورت رشته ذخیره می‌کند. برای جلوگیری از
+    ثبت‌نام مجدد کاربران قدیمی، هر دو نوع را جستجو می‌کنیم.
+    """
+    sid = str(chat_id)
+    variants = [sid]
+    try:
+        iid = int(sid)
+        if iid != sid:
+            variants.append(iid)
+        elif iid not in variants:
+            variants.append(iid)
+    except (TypeError, ValueError):
+        pass
+    return variants
+
+
+def _chat_id_filter(chat_id):
+    variants = _chat_id_variants(chat_id)
+    if len(variants) == 1:
+        return {"chat_id": variants[0]}
+    return {"chat_id": {"$in": variants}}
+
+
 async def get_user(chat_id):
     if users_collection is None:
         return None
     try:
-        return await users_collection.find_one({"chat_id": str(chat_id)})
-    except:
+        # سازگاری با کاربران ثبت‌نام‌شده در نسخه‌های قبلی:
+        # chat_id ممکن است int یا str باشد.
+        return await users_collection.find_one(_chat_id_filter(chat_id))
+    except Exception as e:
+        print(f"⚠️ get_user error: {e}", flush=True)
         return None
 
 
@@ -346,7 +376,9 @@ async def create_user(chat_id, name, phone=None, language="fa", referred_by=None
         return False
     chat_id = str(chat_id)
     try:
-        existing = await users_collection.find_one({"chat_id": chat_id})
+        # ابتدا هم رکوردهای جدید (chat_id رشته‌ای) و هم رکوردهای قدیمی
+        # (chat_id عددی) را پیدا می‌کنیم.
+        existing = await users_collection.find_one(_chat_id_filter(chat_id))
         if existing:
             update = {
                 "name": name or existing.get("name", "کاربر"),
@@ -358,7 +390,10 @@ async def create_user(chat_id, name, phone=None, language="fa", referred_by=None
             # ثبت‌نام جدید phone=None دارد و بنابراین شماره قدیمی کاربران قبلی حذف نمی‌شود.
             if phone is not None:
                 update["phone"] = phone
-            await users_collection.update_one({"chat_id": chat_id}, {"$set": update})
+
+            # با _id خود رکورد آپدیت می‌کنیم تا چه chat_id قدیمی عددی باشد
+            # چه رشته‌ای، همان کاربر قبلی حفظ شود.
+            await users_collection.update_one({"_id": existing["_id"]}, {"$set": update})
             return True
 
         doc = {
@@ -387,7 +422,7 @@ async def create_user(chat_id, name, phone=None, language="fa", referred_by=None
                 )
                 if result.upserted_id is not None:
                     await users_collection.update_one(
-                        {"chat_id": str(referred_by)},
+                        _chat_id_filter(referred_by),
                         {"$inc": {"invite_count": 1}}
                     )
             except Exception as referral_error:
@@ -403,7 +438,7 @@ async def touch_user(chat_id):
         return
     try:
         await users_collection.update_one(
-            {"chat_id": str(chat_id)},
+            _chat_id_filter(chat_id),
             {"$set": {"last_seen_at": time.time()}}
         )
     except Exception:
@@ -2022,6 +2057,8 @@ async def on_message(message: Message):
                 referred_by = referrer_id
                 print(f"🎁 New user {user_id} referred by {referred_by}", flush=True)
 
+        # مهم: get_user هر دو نوع chat_id (قدیمی عددی و جدید رشته‌ای) را پیدا می‌کند؛
+        # بنابراین کاربران قدیمی بعد از Deploy نباید دوباره ثبت‌نام شوند.
         user = await get_user(user_id)
         if user:
             lang = user.get("language", "fa")
