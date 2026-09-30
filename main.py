@@ -35,6 +35,11 @@ WELCOME_IMAGE_URL = ""
 
 # 🔗 لینک ربات برای سیستم دعوت
 BOT_USERNAME = "onlinearzmonybot"  # بدون @
+
+# 👨‍💻 مدیران بات - در Render به صورت ENV تنظیم کن:
+# ADMIN_IDS=123456789,987654321
+ADMIN_IDS = {x.strip() for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()}
+ADMIN_PAGE_SIZE = 8
 # ==================================================
 
 
@@ -44,11 +49,11 @@ BOT_USERNAME = "onlinearzmonybot"  # بدون @
 TRANSLATIONS = {
     "fa": {
         "choose_language": "🌐 لطفاً زبان خود را انتخاب کنید:",
-        "welcome_new": "سلام! 👋\n\nبه ربات *قیمت لحظه‌ای* خوش آمدید.\n\nلطفاً برای شروع، *نام و نام خانوادگی* خود را وارد کنید:",
-        "ask_phone": "📱 حالا لطفاً *شماره موبایل* خود را وارد کنید:\n(مثال: 09123456789)",
+        "welcome_new": "سلام! 👋\n\nبه *ارز آنلاین* خوش آمدید.\n\nبرای شروع فقط *نام و نام خانوادگی* خود را وارد کنید:",
+        "ask_phone": "",
         "invalid_phone": "❌ شماره موبایل نامعتبر است.\nلطفاً شماره را به فرمت صحیح وارد کنید (مثال: 09123456789):",
         "invalid_name": "❌ نام معتبر نیست (حداقل ۳ حرف). لطفاً دوباره وارد کنید:",
-        "register_success": "✅ *ثبت‌نام با موفقیت انجام شد!*\n\n👤 نام: *{name}*\n📱 شماره: *{phone}*\n🌐 زبان: {lang_name}\n\nاز منوی زیر استفاده کنید:",
+        "register_success": "✅ *ثبت‌نام با موفقیت انجام شد!*\n\n👤 نام: *{name}*\n🌐 زبان: {lang_name}\n\nخوش آمدی! از منوی زیر استفاده کن:",
         "welcome_back": "👋 سلام *{name}* عزیز! خوش برگشتی.\n\nاز منوی زیر استفاده کن:",
         "menu_title": "🏠 *منوی اصلی*\n\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
         "menu_crypto": "🪙 ارز دیجیتال",
@@ -98,11 +103,11 @@ TRANSLATIONS = {
     },
     "en": {
         "choose_language": "🌐 Please choose your language:",
-        "welcome_new": "Hello! 👋\n\nWelcome to the *Price Bot*.\n\nPlease enter your *full name* to get started:",
-        "ask_phone": "📱 Now please enter your *phone number*:\n(Example: 09123456789)",
+        "welcome_new": "Hello! 👋\n\nWelcome to *Arz Online*.\n\nPlease enter your *full name* to get started:",
+        "ask_phone": "",
         "invalid_phone": "❌ Invalid phone number.\nPlease enter a valid Iranian mobile number (Example: 09123456789):",
         "invalid_name": "❌ Invalid name (at least 3 characters). Please try again:",
-        "register_success": "✅ *Registration successful!*\n\n👤 Name: *{name}*\n📱 Phone: *{phone}*\n🌐 Language: {lang_name}\n\nUse the menu below:",
+        "register_success": "✅ *Registration successful!*\n\n👤 Name: *{name}*\n🌐 Language: {lang_name}\n\nWelcome! Use the menu below:",
         "welcome_back": "👋 Hello *{name}*! Welcome back.\n\nUse the menu below:",
         "menu_title": "🏠 *Main Menu*\n\nPlease choose one of the options below:",
         "menu_crypto": "🪙 Cryptocurrency",
@@ -329,40 +334,80 @@ async def get_user(chat_id):
         return None
 
 
-async def create_user(chat_id, name, phone, language, referred_by=None):
+async def create_user(chat_id, name, phone=None, language="fa", referred_by=None):
+    """ثبت/به‌روزرسانی کاربر.
+
+    نکته مهم سازگاری:
+    - کاربران قدیمی که phone دارند دست‌نخورده می‌مانند.
+    - کاربران جدید از این نسخه به بعد اصلاً phone دریافت نمی‌کنند.
+    - تغییر زبان یا اطلاعات کاربر قدیمی، phone قبلی را پاک نمی‌کند.
+    """
     if users_collection is None:
         return False
+    chat_id = str(chat_id)
     try:
-        existing = await users_collection.find_one({"chat_id": str(chat_id)})
+        existing = await users_collection.find_one({"chat_id": chat_id})
         if existing:
-            await users_collection.update_one(
-                {"chat_id": str(chat_id)},
-                {"$set": {"name": name, "phone": phone, "language": language, "updated_at": time.time()}}
-            )
-            return True
-        else:
-            doc = {
-                "chat_id": str(chat_id), "name": name, "phone": phone,
-                "language": language, "created_at": time.time(),
-                "referred_by": referred_by, "invite_count": 0
+            update = {
+                "name": name or existing.get("name", "کاربر"),
+                "language": language or existing.get("language", "fa"),
+                "updated_at": time.time(),
+                "last_seen_at": time.time(),
             }
-            await users_collection.insert_one(doc)
-            # ثبت در referrals
-            if referred_by and referrals_collection is not None:
-                await referrals_collection.insert_one({
-                    "referrer": str(referred_by),
-                    "referred": str(chat_id),
-                    "created_at": time.time()
-                })
-                # آپدیت invite_count
-                await users_collection.update_one(
-                    {"chat_id": str(referred_by)},
-                    {"$inc": {"invite_count": 1}}
-                )
+            # فقط اگر صراحتاً phone داده شده باشد، مقدار قبلی را تغییر بده.
+            # ثبت‌نام جدید phone=None دارد و بنابراین شماره قدیمی کاربران قبلی حذف نمی‌شود.
+            if phone is not None:
+                update["phone"] = phone
+            await users_collection.update_one({"chat_id": chat_id}, {"$set": update})
             return True
+
+        doc = {
+            "chat_id": chat_id,
+            "name": name or "کاربر",
+            "language": language or "fa",
+            "created_at": time.time(),
+            "updated_at": time.time(),
+            "last_seen_at": time.time(),
+            "referred_by": str(referred_by) if referred_by else None,
+            "invite_count": 0,
+        }
+        # phone عمداً برای کاربران جدید ذخیره نمی‌شود.
+        await users_collection.insert_one(doc)
+
+        if referred_by and str(referred_by) != chat_id and referrals_collection is not None:
+            try:
+                result = await referrals_collection.update_one(
+                    {"referrer": str(referred_by), "referred": chat_id},
+                    {"$setOnInsert": {
+                        "referrer": str(referred_by),
+                        "referred": chat_id,
+                        "created_at": time.time()
+                    }},
+                    upsert=True
+                )
+                if result.upserted_id is not None:
+                    await users_collection.update_one(
+                        {"chat_id": str(referred_by)},
+                        {"$inc": {"invite_count": 1}}
+                    )
+            except Exception as referral_error:
+                print(f"⚠️ referral error: {referral_error}", flush=True)
+        return True
     except Exception as e:
         print(f"❌ create_user error: {e}", flush=True)
         return False
+
+
+async def touch_user(chat_id):
+    if users_collection is None:
+        return
+    try:
+        await users_collection.update_one(
+            {"chat_id": str(chat_id)},
+            {"$set": {"last_seen_at": time.time()}}
+        )
+    except Exception:
+        pass
 
 
 async def get_user_language(chat_id):
@@ -1071,7 +1116,13 @@ async def show_main_menu(target, user_id, edit=False):
     lang = await get_user_language(user_id)
     user = await get_user(user_id)
     name = user.get("name", "کاربر") if user else "کاربر"
-    text = f"{t('welcome_back', lang, name=name)}\n\n{t('menu_title', lang)}"
+    text = (
+        f"✨ *ارز آنلاین* ✨\n\n"
+        f"{t('welcome_back', lang, name=name)}\n\n"
+        f"{t('menu_title', lang)}\n\n"
+        "📌 قیمت لحظه‌ای ارز، رمزارز، طلا و سکه\n"
+        "⚡ سریع • دقیق • همیشه در دسترس"
+    )
     markup = main_menu_keyboard(lang)
     if edit:
         try:
@@ -1548,6 +1599,164 @@ def channel_poster():
 
 
 # ============================================================
+#                    👨‍💻 پنل مدیریت حرفه‌ای
+# ============================================================
+def is_admin(user_id):
+    return str(user_id) in ADMIN_IDS
+
+
+def admin_keyboard():
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(text="📊 آمار کلی", callback_data="ADMIN:STATS"), row=0)
+    markup.add(InlineKeyboardButton(text="👥 کاربران", callback_data="ADMIN:USERS:0"), row=1)
+    markup.add(InlineKeyboardButton(text="🔎 جستجوی کاربر", callback_data="ADMIN:SEARCH"), row=1)
+    markup.add(InlineKeyboardButton(text="📢 ارسال پیام همگانی", callback_data="ADMIN:BROADCAST"), row=2)
+    markup.add(InlineKeyboardButton(text="🔔 هشدارها", callback_data="ADMIN:ALERTS"), row=2)
+    markup.add(InlineKeyboardButton(text="⭐ علاقه‌مندی‌ها", callback_data="ADMIN:FAVS"), row=3)
+    markup.add(InlineKeyboardButton(text="🩺 وضعیت سیستم", callback_data="ADMIN:HEALTH"), row=3)
+    markup.add(InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="ADMIN:HOME"), row=4)
+    return markup
+
+
+def admin_back_keyboard():
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="ADMIN:HOME"), row=0)
+    return markup
+
+
+async def admin_stats_text():
+    users_count = await users_collection.count_documents({}) if users_collection is not None else 0
+    alerts_count = await alerts_collection.count_documents({}) if alerts_collection is not None else 0
+    favs_count = await favorites_collection.count_documents({}) if favorites_collection is not None else 0
+    refs_count = await referrals_collection.count_documents({}) if referrals_collection is not None else 0
+    legacy_phone_count = 0
+    active_24h = 0
+    if users_collection is not None:
+        legacy_phone_count = await users_collection.count_documents({"phone": {"$exists": True, "$ne": ""}})
+        active_24h = await users_collection.count_documents({"last_seen_at": {"$gte": time.time() - 86400}})
+    return (
+        "👨‍💻 **پنل مدیریت ارز آنلاین**\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"👥 کل کاربران: **{users_count:,}**\n"
+        f"🟢 فعال در ۲۴ ساعت اخیر: **{active_24h:,}**\n"
+        f"📱 کاربران قدیمی دارای شماره: **{legacy_phone_count:,}**\n"
+        f"🔔 هشدارهای فعال: **{alerts_count:,}**\n"
+        f"⭐ علاقه‌مندی‌ها: **{favs_count:,}**\n"
+        f"🎁 Referralهای ثبت‌شده: **{refs_count:,}**\n"
+        f"🕐 آخرین بروزرسانی: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "از دکمه‌های زیر برای مدیریت بات استفاده کن."
+    )
+
+
+async def admin_users_page(page=0):
+    page = max(0, int(page))
+    if users_collection is None:
+        return "❌ دیتابیس متصل نیست.", admin_back_keyboard()
+    total = await users_collection.count_documents({})
+    skip = page * ADMIN_PAGE_SIZE
+    docs = await users_collection.find({}).sort("created_at", -1).skip(skip).limit(ADMIN_PAGE_SIZE).to_list(length=ADMIN_PAGE_SIZE)
+    lines = [
+        "👥 **کاربران ثبت‌نام‌شده**",
+        f"صفحه **{page + 1}** از **{max(1, (total + ADMIN_PAGE_SIZE - 1) // ADMIN_PAGE_SIZE)}**",
+        "━━━━━━━━━━━━━━━━━━"
+    ]
+    if not docs:
+        lines.append("هنوز کاربری ثبت‌نام نکرده است.")
+    else:
+        for i, u in enumerate(docs, start=skip + 1):
+            name = str(u.get("name", "بدون نام"))[:28]
+            uid = str(u.get("chat_id", "-"))
+            phone_mark = "📱" if u.get("phone") else "👤"
+            lines.append(f"{i}. {phone_mark} **{name}**\n   ID: `{uid}`")
+    markup = InlineKeyboardMarkup()
+    for idx, u in enumerate(docs):
+        uid = str(u.get("chat_id"))
+        name = str(u.get("name", "کاربر"))[:20]
+        markup.add(InlineKeyboardButton(text=f"👤 {name}", callback_data=f"ADMIN:USER:{uid}"), row=idx)
+    nav_row = len(docs)
+    total_pages = max(1, (total + ADMIN_PAGE_SIZE - 1) // ADMIN_PAGE_SIZE)
+    if page > 0:
+        markup.add(InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"ADMIN:USERS:{page-1}"), row=nav_row)
+    if page + 1 < total_pages:
+        markup.add(InlineKeyboardButton(text="بعدی ➡️", callback_data=f"ADMIN:USERS:{page+1}"), row=nav_row)
+    markup.add(InlineKeyboardButton(text="🔙 پنل مدیریت", callback_data="ADMIN:HOME"), row=nav_row + 1)
+    return "\n".join(lines), markup
+
+
+async def admin_user_detail(chat_id):
+    user = await get_user(chat_id)
+    if not user:
+        return "❌ کاربر پیدا نشد.", admin_back_keyboard()
+    alerts_count = await alerts_collection.count_documents({"chat_id": str(chat_id)}) if alerts_collection is not None else 0
+    favs_count = await favorites_collection.count_documents({"chat_id": str(chat_id)}) if favorites_collection is not None else 0
+    joined = time.strftime("%Y-%m-%d %H:%M", time.localtime(user.get("created_at", time.time())))
+    last_seen = time.strftime("%Y-%m-%d %H:%M", time.localtime(user.get("last_seen_at", user.get("updated_at", time.time()))))
+    phone = user.get("phone")
+    phone_line = f"📱 شماره قدیمی: `{phone}`\n" if phone else "📱 شماره: ثبت نشده (کاربر جدید)\n"
+    text = (
+        "👤 **جزئیات کاربر**\n━━━━━━━━━━━━━━━━━━\n"
+        f"📝 نام: **{user.get('name', 'بدون نام')}**\n"
+        f"🆔 Chat ID: `{user.get('chat_id')}`\n"
+        f"{phone_line}"
+        f"🌐 زبان: **{LANG_NAMES.get(user.get('language', 'fa'), user.get('language', 'fa'))}**\n"
+        f"📅 ثبت‌نام: **{joined}**\n"
+        f"🟢 آخرین فعالیت: **{last_seen}**\n"
+        f"🎁 دعوت‌ها: **{user.get('invite_count', 0)}**\n"
+        f"🔔 هشدارها: **{alerts_count}**\n"
+        f"⭐ علاقه‌مندی‌ها: **{favs_count}**\n"
+        f"🔗 معرف: `{user.get('referred_by') or '-'} `"
+    )
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(text="🔙 کاربران", callback_data="ADMIN:USERS:0"), row=0)
+    markup.add(InlineKeyboardButton(text="🏠 پنل مدیریت", callback_data="ADMIN:HOME"), row=1)
+    return text, markup
+
+
+async def admin_alerts_text():
+    count = await alerts_collection.count_documents({}) if alerts_collection is not None else 0
+    return (
+        "🔔 **وضعیت هشدارها**\n━━━━━━━━━━━━━━━━━━\n"
+        f"تعداد هشدارهای فعال: **{count:,}**\n\n"
+        "سیستم بررسی هشدارها به‌صورت خودکار در پس‌زمینه اجرا می‌شود."
+    )
+
+
+async def admin_health_text():
+    mongo = "🟢 متصل" if db_client is not None else "🔴 قطع"
+    loop = "🟢 فعال" if MAIN_LOOP is not None else "🔴 نامشخص"
+    return (
+        "🩺 **وضعیت سیستم**\n━━━━━━━━━━━━━━━━━━\n"
+        f"🗄️ MongoDB: **{mongo}**\n"
+        f"⚙️ Event Loop: **{loop}**\n"
+        f"🤖 Bot ID: `{BOT_ID or '-'} `\n"
+        f"📢 Channel: `{CHANNEL_ID}`\n"
+        f"🔔 Alert Checker: **{'فعال' if _checker_thread_started else 'غیرفعال'}**\n"
+        f"📡 Channel Poster: **{'فعال' if _channel_thread_started else 'غیرفعال'}**"
+    )
+
+
+async def admin_broadcast(admin_id, text):
+    if users_collection is None:
+        return 0, 0
+    sent = 0
+    failed = 0
+    cursor = users_collection.find({}, {"chat_id": 1})
+    async for doc in cursor:
+        uid = str(doc.get("chat_id", ""))
+        if not uid:
+            continue
+        try:
+            await bot.send_message(uid, text)
+            sent += 1
+            await asyncio.sleep(0.04)
+        except Exception as e:
+            failed += 1
+            print(f"⚠️ Broadcast failed for {uid}: {e}", flush=True)
+    return sent, failed
+
+
+# ============================================================
 #                       رویدادها
 # ============================================================
 
@@ -1621,6 +1830,64 @@ async def on_message(message: Message):
     text = message.content.strip()
     text_upper = text.upper()
 
+    if text == "/myid":
+        await message.reply(f"🆔 Chat ID شما:\n`{user_id}`\n\nاین شناسه را برای ADMIN_IDS در Render استفاده کن.")
+        return
+
+    # 👨‍💻 مدیران قبل از Force Join پردازش می‌شوند.
+    if is_admin(user_id):
+        if text == "/admin":
+            clear_state(user_id)
+            await message.reply(await admin_stats_text(), components=admin_keyboard())
+            return
+        if text == "/admin_close":
+            clear_state(user_id)
+            await message.reply("✅ پنل مدیریت بسته شد.")
+            return
+        if user_id in user_states and user_states[user_id].get("state") == "admin_broadcast_waiting":
+            broadcast_text = text
+            user_states[user_id] = {"state": "admin_broadcast_confirm", "data": {"text": broadcast_text}}
+            markup = InlineKeyboardMarkup()
+            markup.add(InlineKeyboardButton(text="✅ ارسال به همه", callback_data="ADMIN:BROADCAST:CONFIRM"), row=0)
+            markup.add(InlineKeyboardButton(text="❌ لغو", callback_data="ADMIN:HOME"), row=1)
+            await message.reply(
+                "📢 **پیش‌نمایش پیام همگانی**\n\n" + broadcast_text + "\n\n⚠️ این پیام برای تمام کاربران ثبت‌نام‌شده ارسال می‌شود.",
+                components=markup
+            )
+            return
+        if user_id in user_states and user_states[user_id].get("state") == "admin_search_waiting":
+            query = text.strip()
+            if users_collection is None:
+                await message.reply("❌ دیتابیس متصل نیست.", components=admin_back_keyboard())
+                clear_state(user_id)
+                return
+            docs = await users_collection.find({
+                "$or": [
+                    {"chat_id": query},
+                    {"name": {"$regex": re.escape(query), "$options": "i"}}
+                ]
+            }).limit(10).to_list(length=10)
+            if not docs:
+                await message.reply("❌ کاربری با این مشخصات پیدا نشد.", components=admin_back_keyboard())
+                clear_state(user_id)
+                return
+            markup = InlineKeyboardMarkup()
+            lines = ["🔎 **نتیجه جستجو**\n━━━━━━━━━━━━━━━━━━"]
+            for idx, doc in enumerate(docs):
+                uid = str(doc.get("chat_id"))
+                name = str(doc.get("name", "کاربر"))[:25]
+                lines.append(f"{idx+1}. **{name}** — `{uid}`")
+                markup.add(InlineKeyboardButton(text=f"👤 {name}", callback_data=f"ADMIN:USER:{uid}"), row=idx)
+            markup.add(InlineKeyboardButton(text="🔙 پنل مدیریت", callback_data="ADMIN:HOME"), row=len(docs))
+            clear_state(user_id)
+            await message.reply("\n".join(lines), components=markup)
+            return
+
+    # ثبت آخرین فعالیت کاربران ثبت‌نام‌شده. این فیلد به Force Join یا ثبت‌نام جدید وابسته نیست.
+    existing_for_activity = await get_user(user_id)
+    if existing_for_activity:
+        await touch_user(user_id)
+
     # ============================================================
     #       بررسی عضویت اجباری (Force Join)
     # ============================================================
@@ -1669,24 +1936,38 @@ async def on_message(message: Message):
                 await message.reply(t("invalid_name", lang))
                 return
             data["name"] = text
-            user_states[user_id]["state"] = "awaiting_phone"
-            await message.reply(t("ask_phone", lang))
-            return
-
-        if state == "awaiting_phone":
-            clean_phone = text.replace(" ", "").replace("-", "")
-            if not re.match(r'^09\d{9}$', clean_phone):
-                await message.reply(t("invalid_phone", lang))
-                return
             referred_by = data.get("referred_by")
-            ok = await create_user(user_id, data.get("name", ""), clean_phone, lang, referred_by=referred_by)
+            ok = await create_user(user_id, data.get("name", ""), None, lang, referred_by=referred_by)
             clear_state(user_id)
             clear_lang_cache(user_id)
             if not ok:
                 await message.reply(t("error", lang))
                 return
             lang_name = LANG_NAMES.get(lang, lang)
-            success_text = t("register_success", lang, name=data.get("name", ""), phone=clean_phone, lang_name=lang_name)
+            success_text = t("register_success", lang, name=data.get("name", ""), lang_name=lang_name)
+            await message.reply(success_text + footer_text(lang), components=main_menu_keyboard(lang))
+            return
+
+        # سازگاری با stateهای قدیمی: اگر کاربری به‌دلیل Deploy قبلی در awaiting_phone مانده باشد،
+        # شماره از او نمی‌گیریم؛ متن فعلی را به عنوان نام تلقی می‌کنیم و ثبت‌نام را کامل می‌کنیم.
+        if state == "awaiting_phone":
+            # اگر این state از نسخه قدیمی باقی مانده، نام قبلی را حفظ می‌کنیم و
+            # متن جدید (که ممکن است شماره باشد) را به عنوان نام ذخیره نمی‌کنیم.
+            legacy_name = data.get("name") or text
+            if len(legacy_name.strip()) < 3:
+                await message.reply(t("invalid_name", lang))
+                return
+            old_phone = data.get("phone")
+            if old_phone:
+                ok = await create_user(user_id, legacy_name, old_phone, lang, referred_by=data.get("referred_by"))
+            else:
+                ok = await create_user(user_id, legacy_name, None, lang, referred_by=data.get("referred_by"))
+            clear_state(user_id)
+            clear_lang_cache(user_id)
+            if not ok:
+                await message.reply(t("error", lang))
+                return
+            success_text = t("register_success", lang, name=legacy_name, lang_name=LANG_NAMES.get(lang, lang))
             await message.reply(success_text + footer_text(lang), components=main_menu_keyboard(lang))
             return
 
@@ -1928,6 +2209,81 @@ async def on_callback(callback: CallbackQuery):
                     return
     except:
         return
+
+    # ============================================================
+    # 👨‍💻 پنل مدیریت - فقط برای ADMIN_IDS
+    # ============================================================
+    if is_admin(user_id) and data.startswith("ADMIN:"):
+        try:
+            if data == "ADMIN:HOME":
+                clear_state(user_id)
+                await callback.message.edit(await admin_stats_text(), components=admin_keyboard())
+                return
+
+            if data == "ADMIN:STATS":
+                await callback.message.edit(await admin_stats_text(), components=admin_keyboard())
+                return
+
+            if data.startswith("ADMIN:USERS:"):
+                page = int(data.split(":")[2])
+                text, markup = await admin_users_page(page)
+                await callback.message.edit(text, components=markup)
+                return
+
+            if data.startswith("ADMIN:USER:"):
+                uid = data.split(":", 2)[2]
+                text, markup = await admin_user_detail(uid)
+                await callback.message.edit(text, components=markup)
+                return
+
+            if data == "ADMIN:SEARCH":
+                user_states[user_id] = {"state": "admin_search_waiting", "data": {}}
+                await callback.message.reply("🔎 **جستجوی کاربر**\n\nنام یا Chat ID کاربر را ارسال کن:")
+                return
+
+            if data == "ADMIN:BROADCAST":
+                user_states[user_id] = {"state": "admin_broadcast_waiting", "data": {}}
+                await callback.message.reply("📢 **ارسال پیام همگانی**\n\nمتن پیامی که می‌خواهی برای تمام کاربران ثبت‌نام‌شده ارسال شود را در یک پیام بفرست:")
+                return
+
+            if data == "ADMIN:BROADCAST:CONFIRM":
+                state = user_states.get(user_id, {})
+                broadcast_text = state.get("data", {}).get("text")
+                if not broadcast_text:
+                    await callback.message.reply("❌ پیام برای ارسال پیدا نشد.", components=admin_keyboard())
+                    clear_state(user_id)
+                    return
+                clear_state(user_id)
+                await callback.message.edit("⏳ **در حال ارسال پیام همگانی...**")
+                sent, failed = await admin_broadcast(user_id, broadcast_text)
+                await callback.message.reply(
+                    f"✅ **ارسال همگانی تمام شد.**\n\n📨 موفق: **{sent:,}**\n❌ ناموفق: **{failed:,}**",
+                    components=admin_keyboard()
+                )
+                return
+
+            if data == "ADMIN:ALERTS":
+                await callback.message.edit(await admin_alerts_text(), components=admin_back_keyboard())
+                return
+
+            if data == "ADMIN:FAVS":
+                count = await favorites_collection.count_documents({}) if favorites_collection is not None else 0
+                await callback.message.edit(
+                    f"⭐ **آمار علاقه‌مندی‌ها**\n\nتعداد کل آیتم‌های ذخیره‌شده: **{count:,}**",
+                    components=admin_back_keyboard()
+                )
+                return
+
+            if data == "ADMIN:HEALTH":
+                await callback.message.edit(await admin_health_text(), components=admin_back_keyboard())
+                return
+        except Exception as admin_error:
+            print(f"❌ Admin callback error: {admin_error}", flush=True)
+            try:
+                await callback.message.reply("❌ خطایی در پنل مدیریت رخ داد.", components=admin_keyboard())
+            except:
+                pass
+            return
 
     # ============================================================
     # Force Join باید قبل از هر Callback مربوط به ثبت‌نام اجرا شود.
