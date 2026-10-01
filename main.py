@@ -62,6 +62,7 @@ TRANSLATIONS = {
         "menu_fiat": "💵 ارزهای فیات",
         "menu_gold": "🥇 طلا و سکه",
         "menu_convert": "🔄 مبدل ارز",
+        "menu_market": "📊 بازار امروز",
         "menu_fav": "⭐ علاقه‌مندی‌ها",
         "menu_alert": "🔔 هشدار قیمت",
         "menu_myalerts": "📋 هشدارهای من",
@@ -96,6 +97,7 @@ TRANSLATIONS = {
         "crypto_title": "🪙 *ارز دیجیتال*\n\nیکی از رمزارزها را انتخاب کنید:",
         "fiat_title": "💵 *ارزهای فیات*\n\nیکی از ارزها را انتخاب کنید:",
         "gold_title": "🥇 *طلا و سکه*\n\nیکی از گزینه‌ها را انتخاب کنید:",
+        "market_title": "📊 *بازار امروز*",
         "footer": "\n\n━━━━━━━━━━━━━━━━━━\n👨‍💻 توسعه‌دهنده: *{dev}*\n📩 انتقادات: {feedback}",
         "force_join_title": "⚠️ *دسترسی محدود*",
         "force_join_text": "برای استفاده از ربات، لطفاً اول در کانال ما عضو شوید:\n\n📢 {channel}\n\nبعد از عضویت، روی دکمه زیر کلیک کنید:",
@@ -127,6 +129,7 @@ TRANSLATIONS = {
         "menu_fiat": "💵 Fiat Currencies",
         "menu_gold": "🥇 Gold & Coins",
         "menu_convert": "🔄 Currency Converter",
+        "menu_market": "📊 Today’s Market",
         "menu_fav": "⭐ Favorites",
         "menu_alert": "🔔 Price Alert",
         "menu_myalerts": "📋 My Alerts",
@@ -161,6 +164,7 @@ TRANSLATIONS = {
         "crypto_title": "🪙 *Cryptocurrency*\n\nChoose a coin:",
         "fiat_title": "💵 *Fiat Currencies*\n\nChoose a currency:",
         "gold_title": "🥇 *Gold & Coins*\n\nChoose an option:",
+        "market_title": "📊 *Today’s Market*",
         "footer": "\n\n━━━━━━━━━━━━━━━━━━\n👨‍💻 Developer: *{dev}*\n📩 Feedback: {feedback}",
         "force_join_title": "⚠️ *Access Restricted*",
         "force_join_text": "To use the bot, please join our channel first:\n\n📢 {channel}\n\nAfter joining, click the button below:",
@@ -1177,14 +1181,25 @@ def main_menu_keyboard(lang="fa"):
     markup.add(InlineKeyboardButton(text=t("menu_fiat", lang), callback_data="MENU:FIAT"), row=0)
     markup.add(InlineKeyboardButton(text=t("menu_gold", lang), callback_data="MENU:GOLD"), row=1)
     markup.add(InlineKeyboardButton(text=t("menu_convert", lang), callback_data="CONV:NEW"), row=1)
-    markup.add(InlineKeyboardButton(text=t("menu_fav", lang), callback_data="FAV:VIEW"), row=2)
-    markup.add(InlineKeyboardButton(text=t("menu_alert", lang), callback_data="ALERT:NEW"), row=2)
-    markup.add(InlineKeyboardButton(text=t("menu_myalerts", lang), callback_data="MENU:MYALERTS"), row=3)
-    markup.add(InlineKeyboardButton(text=t("menu_list", lang), callback_data="MENU:LIST"), row=3)
-    markup.add(InlineKeyboardButton(text=t("menu_invite", lang), callback_data="MENU:INVITE"), row=4)
-    markup.add(InlineKeyboardButton(text=t("menu_leaderboard", lang), callback_data="MENU:LEADERBOARD"), row=4)
-    markup.add(InlineKeyboardButton(text=t("menu_profile", lang), callback_data="MENU:PROFILE"), row=5)
-    markup.add(InlineKeyboardButton(text=t("menu_help", lang), callback_data="MENU:HELP"), row=6)
+    markup.add(InlineKeyboardButton(text=t("menu_market", lang), callback_data="MENU:MARKET"), row=2)
+    markup.add(InlineKeyboardButton(text=t("menu_fav", lang), callback_data="FAV:VIEW"), row=3)
+    markup.add(InlineKeyboardButton(text=t("menu_alert", lang), callback_data="ALERT:NEW"), row=3)
+    markup.add(InlineKeyboardButton(text=t("menu_myalerts", lang), callback_data="MENU:MYALERTS"), row=4)
+    markup.add(InlineKeyboardButton(text=t("menu_list", lang), callback_data="MENU:LIST"), row=4)
+    markup.add(InlineKeyboardButton(text=t("menu_invite", lang), callback_data="MENU:INVITE"), row=5)
+    markup.add(InlineKeyboardButton(text=t("menu_leaderboard", lang), callback_data="MENU:LEADERBOARD"), row=5)
+    markup.add(InlineKeyboardButton(text=t("menu_profile", lang), callback_data="MENU:PROFILE"), row=6)
+    markup.add(InlineKeyboardButton(text=t("menu_help", lang), callback_data="MENU:HELP"), row=7)
+    return markup
+
+
+def market_keyboard(lang="fa"):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(text="🪙 رمزارزها", callback_data="MENU:CRYPTO"), row=0)
+    markup.add(InlineKeyboardButton(text="💵 ارزها", callback_data="MENU:FIAT"), row=0)
+    markup.add(InlineKeyboardButton(text="🥇 طلا و سکه", callback_data="MENU:GOLD"), row=1)
+    markup.add(InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="MARKET:REFRESH"), row=2)
+    markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=3)
     return markup
 
 
@@ -1411,6 +1426,61 @@ async def show_main_menu(target, user_id, edit=False):
         "⚡ سریع • دقیق • همیشه در دسترس"
     )
     markup = main_menu_keyboard(lang)
+    if edit:
+        try:
+            await target.edit(text + footer_text(lang), components=markup)
+            return
+        except:
+            pass
+    await target.reply(text + footer_text(lang), components=markup)
+
+
+async def show_market_dashboard(target, user_id, edit=False):
+    """داشبورد ساده بازار؛ از Cache فعلی استفاده می‌کند و قابلیت‌های پیچیده اضافه نمی‌کند."""
+    lang = await get_user_language(user_id)
+    crypto_assets = ["BTC", "ETH", "USDT"]
+    fiat_assets = ["USD", "EUR"]
+    gold_assets = ["gold_18", "coin_emami"]
+
+    lines = [t("market_title", lang), "━━━━━━━━━━━━━━━━━━", "🪙 *رمزارزها*"]
+    for symbol in crypto_assets:
+        data = get_current_price(symbol)
+        if data and data.get("price") is not None:
+            change = data.get("change")
+            change_text = ""
+            if change is not None:
+                try:
+                    val = float(change)
+                    sign = "+" if val > 0 else ""
+                    icon = "🟢" if val > 0 else "🔴" if val < 0 else "⚪"
+                    change_text = f" {icon} {sign}{val:.2f}%"
+                except (ValueError, TypeError):
+                    pass
+            lines.append(f"• {get_asset_display_name(symbol)}: *{format_price(data['price'])} تومان*{change_text}")
+        else:
+            lines.append(f"• {get_asset_display_name(symbol)}: نامشخص")
+
+    lines.append("\n💵 *ارزهای فیات*")
+    for symbol in fiat_assets:
+        data = get_current_price(symbol)
+        name = FIAT_NAMES.get(symbol, symbol)
+        if data and data.get("price") is not None:
+            lines.append(f"• {name}: *{format_price(data['price'])} تومان*")
+        else:
+            lines.append(f"• {name}: نامشخص")
+
+    lines.append("\n🥇 *طلا و سکه*")
+    for symbol in gold_assets:
+        data = get_current_price(symbol)
+        name = GOLD_NAMES.get(symbol, symbol)
+        if data and data.get("price") is not None:
+            lines.append(f"• {name}: *{format_price(data['price'])} تومان*")
+        else:
+            lines.append(f"• {name}: نامشخص")
+
+    lines.append("\n🕐 قیمت‌ها هنگام باز کردن/بروزرسانی این صفحه دریافت شده‌اند.")
+    text = "\n".join(lines)
+    markup = market_keyboard(lang)
     if edit:
         try:
             await target.edit(text + footer_text(lang), components=markup)
@@ -2903,6 +2973,11 @@ async def on_callback(callback: CallbackQuery):
             await callback.message.edit(t("choose_language", lang), components=language_keyboard())
         except:
             await callback.message.reply(t("choose_language", lang), components=language_keyboard())
+        return
+
+    if data == "MENU:MARKET" or data == "MARKET:REFRESH":
+        clear_state(user_id)
+        await show_market_dashboard(callback.message, user_id, edit=True)
         return
 
     if data == "MENU:CRYPTO":
