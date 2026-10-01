@@ -40,6 +40,8 @@ BOT_USERNAME = "onlinearzmonybot"  # بدون @
 # ADMIN_IDS=123456789,987654321
 ADMIN_IDS = {x.strip() for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()}
 ADMIN_PAGE_SIZE = 8
+# 🎁 دسترسی حرفه‌ای: ۵ دعوت یا بیشتر
+PRO_INVITE_THRESHOLD = 5
 # ==================================================
 
 
@@ -79,6 +81,11 @@ TRANSLATIONS = {
         "profile_lang": "🌐 زبان: {lang_name}",
         "profile_joined": "📅 تاریخ عضویت: {date}",
         "profile_invites": "🎁 تعداد دعوت‌شده‌ها: *{count}* نفر",
+        "profile_user_type": "👑 نوع حساب: *{user_type}*",
+        "user_type_special": "کاربر خاص ⭐",
+        "user_type_normal": "کاربر عادی 👤",
+        "pro_locked": "🔒 این قابلیت حرفه‌ای است.\n\nبرای فعال شدن دسترسی حرفه‌ای، حداقل *۵ نفر* را با لینک دعوت خودت به بات دعوت کن.\n\n🎁 دعوت موفق بیشتر = امکانات بیشتر",
+        "pro_unlocked": "✨ دسترسی حرفه‌ای شما فعال است.",
         "profile_change_lang": "🌐 تغییر زبان",
         "profile_logout": "🚪 خروج از حساب",
         "logout_confirm": "⚠️ با خروج از حساب، پروفایل فعلی شما از حالت فعال خارج می‌شود و برای ورود بعدی باید دوباره ثبت‌نام کنید. اطلاعات قدیمی کاربران دیگر با این کار آسیب نمی‌بیند.\n\nآیا مطمئن هستید؟",
@@ -139,6 +146,11 @@ TRANSLATIONS = {
         "profile_lang": "🌐 Language: {lang_name}",
         "profile_joined": "📅 Joined: {date}",
         "profile_invites": "🎁 Invited: *{count}* users",
+        "profile_user_type": "👑 Account type: *{user_type}*",
+        "user_type_special": "Special User ⭐",
+        "user_type_normal": "Normal User 👤",
+        "pro_locked": "🔒 This is a professional feature.\n\nInvite at least *5 people* using your referral link to unlock professional access.",
+        "pro_unlocked": "✨ Your professional access is active.",
         "profile_change_lang": "🌐 Change Language",
         "profile_logout": "🚪 Log out",
         "logout_confirm": "⚠️ Logging out deactivates your current profile. You can register again with /start. Existing users are not affected.\n\nAre you sure?",
@@ -240,6 +252,13 @@ async def init_db():
         favorites_collection = db["favorites"]
         users_collection = db["users"]
         referrals_collection = db["referrals"]
+
+        try:
+            await alerts_collection.create_index([("chat_id", 1), ("asset", 1)])
+            await alerts_collection.create_index([("asset", 1), ("direction", 1)])
+            await users_collection.create_index([("account_status", 1), ("last_seen_at", -1)])
+        except Exception as e:
+            print(f"⚠️ index setup: {e}", flush=True)
 
         # Indexها باعث می‌شوند شناسایی کاربر و Queryهای پرتکرار سریع و پایدار بمانند.
         # هر Index جداگانه مدیریت می‌شود تا اگر دیتای قدیمی duplicate داشت،
@@ -465,6 +484,7 @@ async def create_user(chat_id, name, phone=None, language="fa", referred_by=None
             "last_seen_at": time.time(),
             "account_status": "active",
             "blocked": False,
+            "special_user": False,
             "referred_by": str(referred_by) if referred_by else None,
             "invite_count": 0,
         }
@@ -567,14 +587,75 @@ async def get_leaderboard(limit=10):
 
 
 # --- توابع دیتابیس: هشدارها ---
+async def is_special_user(chat_id):
+    user = await get_user(chat_id)
+    return bool(user and user.get("special_user") is True)
+
+
+async def get_effective_invite_count(chat_id):
+    user = await get_user(chat_id)
+    if not user:
+        return 0
+    return int(user.get("invite_count", 0) or 0)
+
+
+async def has_pro_access(chat_id):
+    """دسترسی حرفه‌ای: کاربر خاص یا حداقل آستانه دعوت."""
+    user = await get_user(chat_id)
+    if not user or user.get("blocked"):
+        return False
+    if user.get("special_user") is True:
+        return True
+    return int(user.get("invite_count", 0) or 0) >= PRO_INVITE_THRESHOLD
+
+
+async def set_special_user(chat_id, special=True):
+    if users_collection is None:
+        return False
+    try:
+        user = await get_user(chat_id)
+        if not user:
+            return False
+        await users_collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"special_user": bool(special), "updated_at": time.time()}}
+        )
+        return True
+    except Exception as e:
+        print(f"❌ set_special_user error: {e}", flush=True)
+        return False
+
+
+async def get_special_users_count():
+    if users_collection is None:
+        return 0
+    try:
+        return await users_collection.count_documents({"special_user": True})
+    except Exception:
+        return 0
+
+
 async def add_alert(chat_id, asset_key, target_price, direction):
-    if alerts_collection is not None:
+    if alerts_collection is None:
+        return False
+    try:
+        target = float(target_price)
+        if target <= 0 or direction not in {"above", "below"}:
+            return False
+        asset_key = str(asset_key).strip().upper()
         await alerts_collection.delete_many({"chat_id": str(chat_id), "asset": asset_key})
         await alerts_collection.insert_one({
-            "chat_id": str(chat_id), "asset": asset_key,
-            "target_price": float(target_price), "direction": direction,
-            "created_at": time.time()
+            "chat_id": str(chat_id),
+            "asset": asset_key,
+            "target_price": target,
+            "direction": direction,
+            "created_at": time.time(),
+            "triggered": False
         })
+        return True
+    except Exception as e:
+        print(f"❌ add_alert error: {e}", flush=True)
+        return False
 
 
 async def get_user_alerts(chat_id):
@@ -594,6 +675,13 @@ async def get_all_alerts():
         cursor = alerts_collection.find({})
         return await cursor.to_list(length=None)
     return []
+
+
+async def remove_all_user_alerts(chat_id):
+    if alerts_collection is None:
+        return 0
+    result = await alerts_collection.delete_many({"chat_id": str(chat_id)})
+    return result.deleted_count
 
 
 # --- توابع دیتابیس: علاقه‌مندی‌ها ---
@@ -772,6 +860,10 @@ def clear_force_join_cache(user_id):
 # --- قیمت‌ها ---
 _fiat_cache = {"data": None, "timestamp": 0}
 _FIAT_CACHE_TTL = 120
+_gold_cache = {}  # {asset: {"data": ..., "timestamp": ...}}
+_GOLD_CACHE_TTL = 45
+_price_cache = {}  # {asset: {"data": ..., "timestamp": ...}}
+_PRICE_CACHE_TTL = 20
 
 
 def _get_all_fiat_data():
@@ -948,7 +1040,7 @@ def _get_json_price(data, keys_list):
     return None
 
 
-def fetch_gold_data(asset_key: str):
+def _fetch_gold_data_uncached(asset_key: str):
     key_map = {"gold_18": "18ayar", "coin_emami": "sekkeh", "coin_bahar": "bahar",
                "coin_half": "nim", "coin_quarter": "rob", "coin_gerami": "gerami"}
     try:
@@ -978,18 +1070,49 @@ def fetch_gold_data(asset_key: str):
         return None
 
 
+def fetch_gold_data(asset_key: str):
+    """دریافت قیمت طلا با Cache کوتاه‌مدت برای کاهش فشار روی API."""
+    now = time.time()
+    cached = _gold_cache.get(asset_key)
+    if cached and (now - cached["timestamp"]) < _GOLD_CACHE_TTL:
+        return cached["data"]
+    data = _fetch_gold_data_uncached(asset_key)
+    if data:
+        _gold_cache[asset_key] = {"data": data, "timestamp": now}
+        return data
+    # در خطای موقت API، آخرین مقدار سالم را برگردانیم؛ فقط اگر وجود داشته باشد.
+    return cached["data"] if cached else None
+
+
+def invalidate_price_cache(asset_key=None):
+    if asset_key is None:
+        _price_cache.clear()
+        return
+    _price_cache.pop(str(asset_key).upper(), None)
+
+
+
 def get_current_price(asset_key: str):
-    if asset_key == "TOMAN":
-        return {"symbol": "TOMAN", "price": 1.0}
-    if asset_key in GOLD_NAMES:
-        return fetch_gold_data(asset_key)
-    elif asset_key in FIAT_NAMES:
-        return fetch_fiat_data(asset_key)
+    """قیمت واحد با Cache مرکزی؛ منابع اصلی خودشان نیز Cache دارند."""
+    key = str(asset_key).strip().upper()
+    now = time.time()
+    cached = _price_cache.get(key)
+    if cached and (now - cached["timestamp"]) < _PRICE_CACHE_TTL:
+        return cached["data"]
+
+    if key == "TOMAN":
+        data = {"symbol": "TOMAN", "price": 1.0}
+    elif key.lower() in GOLD_NAMES:
+        data = fetch_gold_data(key.lower())
+    elif key in FIAT_NAMES:
+        data = fetch_fiat_data(key)
     else:
-        data = fetch_crypto_data(asset_key)
-        if data:
-            return {"symbol": data["symbol"], "price": data["buy_price"]}
-        return None
+        crypto = fetch_crypto_data(key)
+        data = {"symbol": crypto["symbol"], "price": crypto["buy_price"]} if crypto else None
+
+    if data and data.get("price") is not None:
+        _price_cache[key] = {"data": data, "timestamp": now}
+    return data
 
 
 # ============================================================
@@ -1166,12 +1289,19 @@ def convert_to_keyboard(from_asset, lang="fa"):
 
 def alerts_list_keyboard(alerts, user_id, lang="fa"):
     markup = InlineKeyboardMarkup()
-    for idx, a in enumerate(alerts):
-        name = get_asset_display_name(a["asset"])
-        direction_sym = "↑" if a["direction"] == "above" else "↓"
-        label = f"🗑 {name} {direction_sym} {format_price(a['target_price'])}"
-        markup.add(InlineKeyboardButton(text=label, callback_data=f"DELALERT:{a['asset']}"), row=idx)
-    markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=len(alerts))
+    visible = alerts[:12]
+    for idx, a in enumerate(visible):
+        name = get_asset_display_name(a.get("asset", ""))
+        direction_sym = "↑" if a.get("direction") == "above" else "↓"
+        label = f"🗑 {name} {direction_sym} {format_price(a.get('target_price'))}"
+        markup.add(InlineKeyboardButton(text=label, callback_data=f"DELALERT:{a.get('asset','')}"), row=idx)
+    row = len(visible)
+    if len(alerts) > 12:
+        markup.add(InlineKeyboardButton(text=f"ℹ️ {len(alerts)-12} هشدار دیگر", callback_data="MENU:MYALERTS"), row=row)
+        row += 1
+    markup.add(InlineKeyboardButton(text="🗑 حذف همه هشدارها", callback_data="DELALERT:ALL"), row=row)
+    markup.add(InlineKeyboardButton(text="➕ هشدار جدید", callback_data="ALERT:NEW"), row=row + 1)
+    markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=row + 2)
     return markup
 
 
@@ -1277,7 +1407,8 @@ async def show_profile(target, user_id, edit=False):
         f"{t('profile_phone', lang, phone=phone)}\n"
         f"{t('profile_lang', lang, lang_name=lang_name)}\n"
         f"{t('profile_joined', lang, date=joined)}\n"
-        f"{t('profile_invites', lang, count=invite_count)}"
+        f"{t('profile_invites', lang, count=invite_count)}\n"
+        f"{t('profile_user_type', lang, user_type=t('user_type_special', lang) if user.get('special_user') else t('user_type_normal', lang))}"
     )
     markup = profile_keyboard(lang)
     if edit:
@@ -1420,31 +1551,37 @@ async def show_my_alerts(target, user_id, edit=False):
     lang = await get_user_language(user_id)
     alerts = await get_user_alerts(user_id)
     if not alerts:
-        text = "📭 شما هیچ هشدار قیمتی ثبت نکرده‌اید."
+        text = "📭 **هشدار فعالی ندارید.**\n\nبا ثبت هشدار، وقتی قیمت به شرط شما برسد، بات به شما پیام می‌دهد."
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton(text=t("menu_alert", lang), callback_data="ALERT:NEW"), row=0)
         markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=1)
         if edit:
             try:
-                await target.edit(text + footer_text(lang), components=markup)
-                return
-            except:
-                pass
+                await target.edit(text + footer_text(lang), components=markup); return
+            except: pass
         await target.reply(text + footer_text(lang), components=markup)
         return
-    lines = ["🔔 **هشدارهای فعال شما:**\n"]
+
+    lines = ["🔔 **هشدارهای فعال شما**", "━━━━━━━━━━━━━━━━━━"]
     for a in alerts:
-        name = get_asset_display_name(a["asset"])
-        direction_text = "بالا ⬆️" if a["direction"] == "above" else "پایین ⬇️"
-        lines.append(f"🔸 **{name}**\n   📊 هدف: {format_price(a['target_price'])} تومان ({direction_text})")
+        asset = str(a.get("asset", "")).upper()
+        name = get_asset_display_name(asset)
+        direction_text = "بالا ⬆️" if a.get("direction") == "above" else "پایین ⬇️"
+        current = get_current_price(asset)
+        current_text = format_price(current["price"]) + " تومان" if current and current.get("price") is not None else "نامشخص"
+        lines.append(
+            f"🔸 **{name}**\n"
+            f"   💰 فعلی: {current_text}\n"
+            f"   🎯 هدف: {format_price(a.get('target_price'))} تومان\n"
+            f"   📌 شرط: {direction_text}"
+        )
+    lines.append("\n💡 هشدار پس از ارسال موفق، خودکار حذف می‌شود.")
     text = "\n".join(lines)
     markup = alerts_list_keyboard(alerts, user_id, lang)
     if edit:
         try:
-            await target.edit(text + footer_text(lang), components=markup)
-            return
-        except:
-            pass
+            await target.edit(text + footer_text(lang), components=markup); return
+        except: pass
     await target.reply(text + footer_text(lang), components=markup)
 
 
@@ -1525,6 +1662,7 @@ async def do_convert(target, amount, from_asset, to_asset, user_id=None):
 # ============================================================
 
 async def alert_checker_async():
+    """بررسی هشدارها با یک دریافت قیمت برای هر دارایی، نه یک API call برای هر کاربر."""
     print("🔔 Alert checker started!", flush=True)
     while True:
         try:
@@ -1532,40 +1670,60 @@ async def alert_checker_async():
             if not alerts:
                 await asyncio.sleep(60)
                 continue
-            for alert in alerts[:]:
-                current = get_current_price(alert["asset"])
+
+            # هر دارایی فقط یک بار قیمت‌گذاری می‌شود؛ نتیجه بین همه هشدارها مشترک است.
+            prices = {}
+            for alert in alerts:
+                asset = str(alert.get("asset", "")).upper()
+                if asset and asset not in prices:
+                    try:
+                        prices[asset] = get_current_price(asset)
+                    except Exception as e:
+                        print(f"⚠️ Alert price error | asset={asset} | {e}", flush=True)
+                        prices[asset] = None
+
+            for alert in alerts:
+                asset = str(alert.get("asset", "")).upper()
+                current = prices.get(asset)
                 if not current or current.get("price") is None:
                     continue
-                current_price = float(current["price"])
-                target = alert["target_price"]
-                direction = alert["direction"]
-                triggered = False
-                if direction == "above" and current_price >= target:
-                    triggered = True
-                elif direction == "below" and current_price <= target:
-                    triggered = True
-                if triggered:
-                    name = get_asset_display_name(alert["asset"])
-                    direction_text = "بالا رفت 📈" if direction == "above" else "پایین آمد 📉"
-                    notification = (
-                        f"🔔 **هشدار قیمت!**\n━━━━━━━━━━━━━━━━━━\n"
-                        f"📊 دارایی: **{name}**\n"
-                        f"💰 قیمت فعلی: **{format_price(current_price)} تومان**\n"
-                        f"🎯 قیمت هدف: {format_price(target)} تومان\n"
-                        f"📈 وضعیت: قیمت از هدف شما {direction_text}\n"
-                        f"━━━━━━━━━━━━━━━━━━"
-                    )
+                try:
+                    current_price = float(current["price"])
+                    target = float(alert["target_price"])
+                except (TypeError, ValueError):
+                    continue
+
+                direction = alert.get("direction")
+                triggered = (direction == "above" and current_price >= target) or (direction == "below" and current_price <= target)
+                if not triggered:
+                    continue
+
+                name = get_asset_display_name(asset)
+                direction_text = "بالا رفت 📈" if direction == "above" else "پایین آمد 📉"
+                notification = (
+                    f"🔔 **هشدار قیمت فعال شد!**\n━━━━━━━━━━━━━━━━━━\n"
+                    f"📊 دارایی: **{name}**\n"
+                    f"💰 قیمت فعلی: **{format_price(current_price)} تومان**\n"
+                    f"🎯 قیمت هدف: **{format_price(target)} تومان**\n"
+                    f"📈 وضعیت: قیمت {direction_text}\n"
+                    f"🕐 زمان: {time.strftime('%Y-%m-%d %H:%M')}\n"
+                    f"━━━━━━━━━━━━━━━━━━"
+                )
+                sent = False
+                try:
+                    await bot.send_message(alert["chat_id"], notification)
+                    sent = True
+                except Exception as e:
+                    print(f"❌ Error sending alert | user={alert.get('chat_id')} | {e}", flush=True)
+
+                # هشدار one-shot است؛ فقط بعد از ارسال موفق حذف می‌شود تا پیام گم نشود.
+                if sent and alerts_collection is not None:
                     try:
-                        await bot.send_message(alert["chat_id"], notification)
+                        await alerts_collection.delete_one({"_id": alert["_id"]})
                     except Exception as e:
-                        print(f"Error sending alert: {e}", flush=True)
-                    if alerts_collection is not None:
-                        try:
-                            await alerts_collection.delete_one({"_id": alert["_id"]})
-                        except:
-                            pass
+                        print(f"⚠️ Alert delete error: {e}", flush=True)
         except Exception as e:
-            print(f"Alert checker error: {e}", flush=True)
+            print(f"❌ Alert checker error: {e}", flush=True)
         await asyncio.sleep(60)
 
 
@@ -1737,6 +1895,7 @@ def admin_keyboard():
     markup.add(InlineKeyboardButton(text="🔎 جستجوی کاربر", callback_data="ADMIN:SEARCH"), row=1)
     markup.add(InlineKeyboardButton(text="📢 ارسال پیام همگانی", callback_data="ADMIN:BROADCAST"), row=2)
     markup.add(InlineKeyboardButton(text="🔔 هشدارها", callback_data="ADMIN:ALERTS"), row=2)
+    markup.add(InlineKeyboardButton(text="⭐ افراد خاص", callback_data="ADMIN:SPECIAL"), row=3)
     markup.add(InlineKeyboardButton(text="⭐ علاقه‌مندی‌ها", callback_data="ADMIN:FAVS"), row=3)
     markup.add(InlineKeyboardButton(text="🩺 وضعیت سیستم", callback_data="ADMIN:HEALTH"), row=3)
     markup.add(InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="ADMIN:HOME"), row=4)
@@ -1778,6 +1937,7 @@ async def admin_stats_text():
         f"🔔 هشدارهای فعال: **{alerts_count:,}**\n"
         f"⭐ علاقه‌مندی‌ها: **{favs_count:,}**\n"
         f"🎁 Referralها: **{refs_count:,}**\n"
+        f"⭐ افراد خاص: **{await get_special_users_count():,}**\n"
         f"📱 کاربران دارای شماره قدیمی: **{legacy_phone_count:,}**\n"
         "━━━━━━━━━━━━━━━━━━\n"
         f"🕐 بروزرسانی: {time.strftime('%Y-%m-%d %H:%M:%S')}"
@@ -1804,6 +1964,8 @@ async def admin_users_page(page=0):
             uid = str(u.get("chat_id", "-"))
             phone_mark = "📱" if u.get("phone") else "👤"
             status_mark = "🚫" if u.get("blocked") else ("🚪" if u.get("account_status") == "logged_out" else "🟢")
+            if u.get("special_user"):
+                status_mark += "⭐"
             lines.append(f"{i}. {status_mark}{phone_mark} **{name}**\n   ID: `{uid}`")
     markup = InlineKeyboardMarkup()
     for idx, u in enumerate(docs):
@@ -1839,6 +2001,7 @@ async def admin_user_detail(chat_id):
         f"📅 ثبت‌نام: **{joined}**\n"
         f"🟢 آخرین فعالیت: **{last_seen}**\n"
         f"🎁 دعوت‌ها: **{user.get('invite_count', 0)}**\n"
+        f"👑 نوع کاربر: **{'کاربر خاص ⭐' if user.get('special_user') else 'کاربر عادی 👤'}**\n"
         f"🔔 هشدارها: **{alerts_count}**\n"
         f"⭐ علاقه‌مندی‌ها: **{favs_count}**\n"
         f"🔗 معرف: `{user.get('referred_by') or '-'} `\n"
@@ -1849,9 +2012,32 @@ async def admin_user_detail(chat_id):
         markup.add(InlineKeyboardButton(text="🟢 رفع مسدودی", callback_data=f"ADMIN:UNBLOCK:{chat_id}"), row=0)
     else:
         markup.add(InlineKeyboardButton(text="🚫 مسدود کردن", callback_data=f"ADMIN:BLOCK:{chat_id}"), row=0)
-    markup.add(InlineKeyboardButton(text="🔙 کاربران", callback_data="ADMIN:USERS:0"), row=1)
-    markup.add(InlineKeyboardButton(text="🏠 پنل مدیریت", callback_data="ADMIN:HOME"), row=2)
+    if user.get("special_user"):
+        markup.add(InlineKeyboardButton(text="⭐ حذف از افراد خاص", callback_data=f"ADMIN:UNSPECIAL:{chat_id}"), row=1)
+    else:
+        markup.add(InlineKeyboardButton(text="⭐ افزودن به افراد خاص", callback_data=f"ADMIN:SPECIAL:{chat_id}"), row=1)
+    markup.add(InlineKeyboardButton(text="🔙 کاربران", callback_data="ADMIN:USERS:0"), row=2)
+    markup.add(InlineKeyboardButton(text="🏠 پنل مدیریت", callback_data="ADMIN:HOME"), row=3)
     return text, markup
+
+
+async def admin_special_users_text():
+    if users_collection is None:
+        return "❌ دیتابیس متصل نیست.", admin_back_keyboard()
+    docs = await users_collection.find({"special_user": True}).sort("updated_at", -1).limit(50).to_list(length=50)
+    lines = ["⭐ **افراد خاص**", "━━━━━━━━━━━━━━━━━━"]
+    if not docs:
+        lines.append("هنوز کاربری به افراد خاص اضافه نشده است.")
+    else:
+        for i, u in enumerate(docs, 1):
+            lines.append(f"{i}. **{str(u.get('name', 'کاربر'))[:25]}** — `{u.get('chat_id', '-')}`")
+    markup = InlineKeyboardMarkup()
+    for i, u in enumerate(docs):
+        uid = str(u.get("chat_id"))
+        name = str(u.get("name", "کاربر"))[:20]
+        markup.add(InlineKeyboardButton(text=f"⭐ {name}", callback_data=f"ADMIN:USER:{uid}"), row=i)
+    markup.add(InlineKeyboardButton(text="🔙 پنل مدیریت", callback_data="ADMIN:HOME"), row=len(docs)+1)
+    return "\n".join(lines), markup
 
 
 async def admin_alerts_text():
@@ -2272,6 +2458,10 @@ async def on_message(message: Message):
         return
 
     if text == '/myalerts':
+        if not await has_pro_access(user_id):
+            invite_count = await get_effective_invite_count(user_id)
+            await message.reply(t("pro_locked", lang) + f"\n\n📊 دعوت‌های شما: **{invite_count}** از **{PRO_INVITE_THRESHOLD}**" + footer_text(lang))
+            return
         await show_my_alerts(message, user_id)
         return
     if text == '/fav' or text == '/favorites':
@@ -2281,6 +2471,10 @@ async def on_message(message: Message):
     # فرمت هشدار
     alert_match = re.match(r'^هشدار\s+([A-Za-z_0-9]+)\s+(\d+(?:\.\d+)?)\s+(بالا|پایین|بیشتر|کمتر)$', text, re.IGNORECASE)
     if alert_match:
+        if not await has_pro_access(user_id):
+            invite_count = await get_effective_invite_count(user_id)
+            await message.reply(t("pro_locked", lang) + f"\n\n📊 دعوت‌های شما: **{invite_count}** از **{PRO_INVITE_THRESHOLD}**" + footer_text(lang))
+            return
         asset_key = alert_match.group(1)
         target_price = float(alert_match.group(2))
         direction_word = alert_match.group(3)
@@ -2424,6 +2618,23 @@ async def on_callback(callback: CallbackQuery):
                     f"✅ **ارسال همگانی تمام شد.**\n\n📨 موفق: **{sent:,}**\n❌ ناموفق: **{failed:,}**",
                     components=admin_keyboard()
                 )
+                return
+
+            if data == "ADMIN:SPECIAL":
+                text, markup = await admin_special_users_text()
+                await callback.message.edit(text, components=markup)
+                return
+
+            if data.startswith("ADMIN:SPECIAL:") or data.startswith("ADMIN:UNSPECIAL:"):
+                parts = data.split(":", 2)
+                uid = parts[2]
+                special = parts[1] == "SPECIAL"
+                ok = await set_special_user(uid, special)
+                if ok:
+                    text, markup = await admin_user_detail(uid)
+                    await callback.message.edit(text, components=markup)
+                else:
+                    await callback.message.reply("❌ تغییر وضعیت کاربر انجام نشد.", components=admin_back_keyboard())
                 return
 
             if data == "ADMIN:ALERTS":
@@ -2602,6 +2813,16 @@ async def on_callback(callback: CallbackQuery):
 
     lang = await get_user_language(user_id)
 
+    # 🔒 قابلیت‌های حرفه‌ای: افراد خاص همیشه دسترسی دارند؛ بقیه با ۵ دعوت یا بیشتر.
+    if data in {"MENU:MYALERTS", "ALERT:NEW"} or data.startswith("ALERT:"):
+        if not await has_pro_access(user_id):
+            invite_count = await get_effective_invite_count(user_id)
+            await callback.message.reply(
+                t("pro_locked", lang) + f"\n\n📊 دعوت‌های شما: **{invite_count}** از **{PRO_INVITE_THRESHOLD}**" + footer_text(lang),
+                components=main_menu_keyboard(lang)
+            )
+            return
+
     if data == "MENU:MAIN":
         clear_state(user_id)
         await show_main_menu(callback.message, user_id, edit=True)
@@ -2767,9 +2988,14 @@ async def on_callback(callback: CallbackQuery):
         parts = data.split(":")
         if len(parts) >= 2:
             asset = parts[1]
-            await remove_alert(user_id, asset)
-            await callback.message.reply(f"✅ **{get_asset_display_name(asset)}** حذف شد." + footer_text(lang))
-            await show_my_alerts(callback.message, user_id, edit=True)
+            if asset == "ALL":
+                count = await remove_all_user_alerts(user_id)
+                await callback.message.reply(f"🗑 **{count} هشدار حذف شد.**" + footer_text(lang))
+                await show_my_alerts(callback.message, user_id, edit=False)
+            else:
+                await remove_alert(user_id, asset)
+                await callback.message.reply(f"🗑 هشدار **{get_asset_display_name(asset)}** حذف شد." + footer_text(lang))
+                await show_my_alerts(callback.message, user_id, edit=False)
         return
 
     if data == "ALERT:NEW":
@@ -2820,7 +3046,14 @@ async def on_callback(callback: CallbackQuery):
             return
         asset = user_states[user_id]["data"]["asset"]
         target_price = user_states[user_id]["data"]["target_price"]
-        await add_alert(user_id, asset, target_price, direction)
+        current = get_current_price(asset)
+        if not current or current.get("price") is None:
+            await callback.message.reply("❌ در حال حاضر قیمت این دارایی در دسترس نیست. لطفاً کمی بعد دوباره تلاش کنید." + footer_text(lang))
+            return
+        ok = await add_alert(user_id, asset, target_price, direction)
+        if not ok:
+            await callback.message.reply("❌ ثبت هشدار انجام نشد. دوباره تلاش کنید." + footer_text(lang))
+            return
         clear_state(user_id)
         direction_text = "بالا برود 📈" if direction == "above" else "پایین بیاید 📉"
         text = (
