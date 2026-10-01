@@ -253,32 +253,77 @@ async def init_db():
         users_collection = db["users"]
         referrals_collection = db["referrals"]
 
-        try:
-            await alerts_collection.create_index([("chat_id", 1), ("asset", 1)])
-            await alerts_collection.create_index([("asset", 1), ("direction", 1)])
-            await users_collection.create_index([("account_status", 1), ("last_seen_at", -1)])
-        except Exception as e:
-            print(f"⚠️ index setup: {e}", flush=True)
-
-        # Indexها باعث می‌شوند شناسایی کاربر و Queryهای پرتکرار سریع و پایدار بمانند.
-        # هر Index جداگانه مدیریت می‌شود تا اگر دیتای قدیمی duplicate داشت،
-        # کل اتصال دیتابیس به خاطر یک Index از کار نیفتد.
-        index_jobs = [
-            (users_collection, "chat_id", {"unique": True}),
-            (alerts_collection, [("chat_id", 1), ("asset", 1)], {"unique": True}),
-            (favorites_collection, [("chat_id", 1), ("asset", 1)], {"unique": True}),
-            (referrals_collection, [("referrer", 1), ("referred", 1)], {"unique": True}),
-        ]
-        for collection, keys, options in index_jobs:
+        async def ensure_index(collection, keys, *, unique=False, name=None):
+            """Index را بدون ایجاد conflict با Indexهای قدیمی بررسی/ایجاد می‌کند."""
+            if collection is None:
+                return
+            requested_keys = dict(keys) if isinstance(keys, list) else {keys: 1}
+            requested_name = name
             try:
-                await collection.create_index(keys, **options)
+                existing_indexes = await collection.list_indexes().to_list(length=None)
+                for idx in existing_indexes:
+                    existing_keys = dict(idx.get("key", {}))
+                    existing_unique = bool(idx.get("unique", False))
+                    existing_name = idx.get("name")
+                    if existing_keys == requested_keys:
+                        # اگر Index موجود همان key را دارد، از همان استفاده می‌کنیم.
+                        # مخصوصاً اگر Index قدیمی unique=True باشد، هرگز Index معمولی
+                        # با همان نام/کلید ایجاد نمی‌کنیم.
+                        if existing_unique == bool(unique):
+                            print(
+                                f"ℹ️ Index موجود است: {collection.name} / {existing_name} / unique={existing_unique}",
+                                flush=True
+                            )
+                        else:
+                            print(
+                                f"ℹ️ Index موجود با تنظیم متفاوت استفاده شد: {collection.name} / {existing_name} / unique={existing_unique}",
+                                flush=True
+                            )
+                        return
+
+                options = {"unique": bool(unique)}
+                if requested_name:
+                    options["name"] = requested_name
+                created_name = await collection.create_index(keys, **options)
+                print(f"✅ Index ساخته شد: {collection.name} / {created_name}", flush=True)
             except Exception as index_error:
+                # خطای Index نباید مانع بالا آمدن بات شود.
                 print(f"⚠️ Index warning ({getattr(collection, 'name', 'unknown')}): {index_error}", flush=True)
-                # اگر دیتای قدیمی duplicate بود، یک Index معمولی هم می‌سازیم.
-                try:
-                    await collection.create_index(keys)
-                except Exception as fallback_error:
-                    print(f"⚠️ Fallback index failed: {fallback_error}", flush=True)
+
+        # هر Index فقط یک‌بار و با مشخصات مشخص مدیریت می‌شود.
+        # مهم: قبل از create_index، Indexهای موجود بررسی می‌شوند تا
+        # خطای IndexKeySpecsConflict در Deployهای بعدی تکرار نشود.
+        await ensure_index(users_collection, "chat_id", unique=True, name="users_chat_id_unique")
+        await ensure_index(
+            users_collection,
+            [("account_status", 1), ("last_seen_at", -1)],
+            unique=False,
+            name="users_status_last_seen"
+        )
+        await ensure_index(
+            alerts_collection,
+            [("chat_id", 1), ("asset", 1)],
+            unique=True,
+            name="alerts_chat_asset_unique"
+        )
+        await ensure_index(
+            alerts_collection,
+            [("asset", 1), ("direction", 1)],
+            unique=False,
+            name="alerts_asset_direction"
+        )
+        await ensure_index(
+            favorites_collection,
+            [("chat_id", 1), ("asset", 1)],
+            unique=True,
+            name="favorites_chat_asset_unique"
+        )
+        await ensure_index(
+            referrals_collection,
+            [("referrer", 1), ("referred", 1)],
+            unique=True,
+            name="referrals_referrer_referred_unique"
+        )
 
         print("✅ اتصال به MongoDB با موفقیت برقرار شد + Indexها بررسی شدند!", flush=True)
         return True
