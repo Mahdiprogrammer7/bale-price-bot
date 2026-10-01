@@ -242,10 +242,12 @@ alerts_collection = None
 favorites_collection = None
 users_collection = None
 referrals_collection = None
+DB_READY = False
 
 
 async def init_db():
-    global db_client, alerts_collection, favorites_collection, users_collection, referrals_collection
+    global db_client, alerts_collection, favorites_collection, users_collection, referrals_collection, DB_READY
+    DB_READY = False
     if not MONGO_URI:
         return False
     try:
@@ -329,6 +331,7 @@ async def init_db():
             name="referrals_referrer_referred_unique"
         )
 
+        DB_READY = True
         print("✅ اتصال به MongoDB با موفقیت برقرار شد + Indexها بررسی شدند!", flush=True)
         return True
     except Exception as e:
@@ -435,13 +438,21 @@ def _chat_id_filter(chat_id):
 async def get_user(chat_id):
     if users_collection is None:
         return None
-    try:
-        # سازگاری با کاربران ثبت‌نام‌شده در نسخه‌های قبلی:
-        # chat_id ممکن است int یا str باشد.
-        return await users_collection.find_one(_chat_id_filter(chat_id))
-    except Exception as e:
-        print(f"⚠️ get_user error: {e}", flush=True)
-        return None
+    # در زمان Deploy/اختلال کوتاه MongoDB، چند بار تلاش می‌کنیم تا
+    # کاربر قدیمی به اشتباه «جدید» تشخیص داده نشود.
+    for attempt in range(3):
+        try:
+            # سازگاری با کاربران ثبت‌نام‌شده در نسخه‌های قبلی:
+            # chat_id ممکن است int یا str باشد.
+            user = await users_collection.find_one(_chat_id_filter(chat_id))
+            if user:
+                return user
+            return None
+        except Exception as e:
+            print(f"⚠️ get_user error (attempt {attempt + 1}/3): {e}", flush=True)
+            if attempt < 2:
+                await asyncio.sleep(0.5)
+    return None
 
 
 async def get_active_user(chat_id):
@@ -2232,6 +2243,19 @@ async def on_ready():
             pass
 
 
+async def wait_for_database_ready(timeout=12):
+    """در زمان Deploy اجازه نمی‌دهد قبل از آماده‌شدن MongoDB کاربر جدید فرض شود."""
+    global DB_READY
+    if DB_READY and users_collection is not None:
+        return True
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if DB_READY and users_collection is not None:
+            return True
+        await asyncio.sleep(0.5)
+    return bool(DB_READY and users_collection is not None)
+
+
 @bot.event
 async def on_message(message: Message):
     try:
@@ -2271,6 +2295,12 @@ async def on_message(message: Message):
     user_id = get_user_id_from_message(message)
     text = message.content.strip()
     text_upper = text.upper()
+
+    # بسیار مهم: هنگام Deploy ممکن است on_message قبل از تمام‌شدن اتصال MongoDB اجرا شود.
+    # در این حالت نباید کاربر قدیمی را «کاربر جدید» فرض کنیم و پیام انتخاب زبان بفرستیم.
+    if not await wait_for_database_ready(timeout=12):
+        await message.reply("⏳ در حال اتصال به پایگاه داده هستیم. لطفاً چند ثانیه دیگر دوباره تلاش کنید.")
+        return
 
     if text == "/myid":
         await message.reply(f"🆔 Chat ID شما:\n`{user_id}`\n\nاین شناسه را برای ADMIN_IDS در Render استفاده کن.")
