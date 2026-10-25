@@ -38,7 +38,7 @@ WELCOME_IMAGE_URL = ""
 # 🔗 لینک ربات برای سیستم دعوت
 BOT_USERNAME = "onlinearzmonybot"  # بدون @
 
-# 👨‍💻 مدیران بات - در Render به صورت ENV تنظیم کن:
+# 👨‍💻 مدیران بات
 ADMIN_IDS = {x.strip() for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()}
 ADMIN_PAGE_SIZE = 8
 # 🎁 دسترسی حرفه‌ای: ۵ دعوت یا بیشتر
@@ -62,7 +62,7 @@ TRANSLATIONS = {
         "menu_crypto": "🪙 ارز دیجیتال",
         "menu_fiat": "💵 ارزهای فیات",
         "menu_gold": "🥇 طلا و سکه",
-        "menu_oil": "🛢️ نفت برنت", # <--- دکمه نفت
+        "menu_oil": "🛢️ نفت برنت",
         "menu_convert": "🔄 مبدل ارز",
         "menu_market": "📊 بازار امروز",
         "menu_fav": "⭐ علاقه‌مندی‌ها",
@@ -130,7 +130,7 @@ TRANSLATIONS = {
         "menu_crypto": "🪙 Cryptocurrency",
         "menu_fiat": "💵 Fiat Currencies",
         "menu_gold": "🥇 Gold & Coins",
-        "menu_oil": "🛢️ Brent Oil", # <--- Oil Button
+        "menu_oil": "🛢️ Brent Oil",
         "menu_convert": "🔄 Currency Converter",
         "menu_market": "📊 Today’s Market",
         "menu_fav": "⭐ Favorites",
@@ -263,7 +263,6 @@ async def init_db():
         referrals_collection = db["referrals"]
 
         async def ensure_index(collection, keys, *, unique=False, name=None):
-            """Index را بدون ایجاد conflict با Indexهای قدیمی بررسی/ایجاد می‌کند."""
             if collection is None:
                 return
             requested_keys = dict(keys) if isinstance(keys, list) else {keys: 1}
@@ -2499,4 +2498,691 @@ async def on_message(message: Message):
                 symbols = list(markets_data.keys())
             elif isinstance(markets_data, list):
                 symbols = [item.get("symbol") for item in markets_data if item.get("symbol")]
-            clean_symbol
+            clean_symbols = [s.replace("IRT", "") for s in symbols if "IRT" in s] or symbols
+            chunks = [clean_symbols[i:i + 50] for i in range(0, len(clean_symbols), 50)]
+            await message.reply("📋 **لیست رمزارزها:**\n")
+            for chunk in chunks:
+                await message.reply("، ".join(chunk))
+        except Exception as e:
+            print(f"Error: {e}", flush=True)
+        return
+
+    if text == '/myalerts':
+        if not await has_pro_access(user_id):
+            invite_count = await get_effective_invite_count(user_id)
+            await message.reply(t("pro_locked", lang) + f"\n\n📊 دعوت‌های شما: **{invite_count}** از **{PRO_INVITE_THRESHOLD}**" + footer_text(lang))
+            return
+        await show_my_alerts(message, user_id)
+        return
+    if text == '/fav' or text == '/favorites':
+        await show_favorites(message, user_id)
+        return
+
+    alert_match = re.match(r'^هشدار\s+([A-Za-z_0-9]+)\s+(\d+(?:\.\d+)?)\s+(بالا|پایین|بیشتر|کمتر)$', text, re.IGNORECASE)
+    if alert_match:
+        if not await has_pro_access(user_id):
+            invite_count = await get_effective_invite_count(user_id)
+            await message.reply(t("pro_locked", lang) + f"\n\n📊 دعوت‌های شما: **{invite_count}** از **{PRO_INVITE_THRESHOLD}**" + footer_text(lang))
+            return
+        asset_key = alert_match.group(1)
+        target_price = float(alert_match.group(2))
+        direction_word = alert_match.group(3)
+        direction = "above" if direction_word in ("بالا", "بیشتر") else "below"
+        asset_upper = asset_key.upper()
+        if asset_upper in FIAT_NAMES:
+            asset_key = asset_upper
+        elif asset_key in GOLD_NAMES:
+            pass
+        else:
+            asset_key = asset_upper
+        current = get_current_price(asset_key)
+        if not current:
+            await message.reply(t("not_found", lang) + footer_text(lang))
+            return
+        await add_alert(user_id, asset_key, target_price, direction)
+        asset_name = get_asset_display_name(asset_key)
+        direction_text = "بالا برود" if direction == "above" else "پایین بیاید"
+        await message.reply(
+            f"✅ **هشدار ثبت شد!**\n\n🔔 {asset_name} → {format_price(target_price)} تومان ({direction_text})\n💰 قیمت فعلی: {format_price(current['price'])} تومان" + footer_text(lang),
+            components=main_menu_keyboard(lang)
+        )
+        return
+
+    conv_match = re.match(r'^(\d+(?:\.\d+)?)\s+([A-Za-z_]{2,10})\s+(?:به|to|in)\s+([A-Za-z_]{2,10})$', text, re.IGNORECASE)
+    if conv_match:
+        amount = float(conv_match.group(1))
+        from_asset = conv_match.group(2)
+        to_asset = conv_match.group(3)
+        if from_asset.upper() in ("TOMAN", "IRT", "تومان"):
+            from_asset = "TOMAN"
+        elif from_asset.upper() in FIAT_NAMES:
+            from_asset = from_asset.upper()
+        elif from_asset in GOLD_NAMES:
+            pass
+        else:
+            from_asset = from_asset.upper()
+        if to_asset.upper() in ("TOMAN", "IRT", "تومان"):
+            to_asset = "TOMAN"
+        elif to_asset.upper() in FIAT_NAMES:
+            to_asset = to_asset.upper()
+        elif to_asset in GOLD_NAMES:
+            pass
+        else:
+            to_asset = to_asset.upper()
+        await do_convert(message, amount, from_asset, to_asset, user_id)
+        return
+
+    if text_upper in FIAT_NAMES:
+        await process_fiat_and_reply(message, text_upper, user_id)
+        return
+
+    user = await get_user(user_id)
+    if not user:
+        user_states[user_id] = {"state": "awaiting_language", "data": {}}
+        await message.reply(t("choose_language", "fa"), components=language_keyboard())
+        return
+
+    await process_crypto_and_reply(message, text_upper, user_id)
+
+
+# ============================================================
+#     رویداد کلیک روی دکمه‌ها
+# ============================================================
+@bot.event
+async def on_callback(callback: CallbackQuery):
+    data = callback.data
+    user_id = get_user_id_from_callback(callback)
+    if not user_id:
+        return
+
+    try:
+        if hasattr(callback, 'message') and callback.message:
+            if hasattr(callback.message, 'chat') and callback.message.chat:
+                chat_type = getattr(callback.message.chat, 'type', None)
+                if chat_type != 'private':
+                    return
+    except:
+        return
+
+    if is_admin(user_id) and data.startswith("ADMIN:"):
+        try:
+            if data == "ADMIN:HOME":
+                clear_state(user_id)
+                await callback.message.edit(await admin_stats_text(), components=admin_keyboard())
+                return
+
+            if data == "ADMIN:STATS":
+                await callback.message.edit(await admin_stats_text(), components=admin_keyboard())
+                return
+
+            if data.startswith("ADMIN:USERS:"):
+                page = int(data.split(":")[2])
+                text, markup = await admin_users_page(page)
+                await callback.message.edit(text, components=markup)
+                return
+
+            if data.startswith("ADMIN:USER:"):
+                uid = data.split(":", 2)[2]
+                text, markup = await admin_user_detail(uid)
+                await callback.message.edit(text, components=markup)
+                return
+
+            if data.startswith("ADMIN:BLOCK:") or data.startswith("ADMIN:UNBLOCK:"):
+                parts = data.split(":", 2)
+                uid = parts[2]
+                blocked = parts[1] == "BLOCK"
+                ok = await set_user_blocked(uid, blocked)
+                if ok:
+                    text, markup = await admin_user_detail(uid)
+                    await callback.message.edit(text, components=markup)
+                else:
+                    await callback.message.reply("❌ تغییر وضعیت کاربر انجام نشد.", components=admin_back_keyboard())
+                return
+
+            if data == "ADMIN:SEARCH":
+                user_states[user_id] = {"state": "admin_search_waiting", "data": {}}
+                await callback.message.reply("🔎 **جستجوی کاربر**\n\nنام یا Chat ID کاربر را ارسال کن:")
+                return
+
+            if data == "ADMIN:BROADCAST":
+                user_states[user_id] = {"state": "admin_broadcast_waiting", "data": {}}
+                await callback.message.reply("📢 **ارسال پیام همگانی**\n\nمتن پیامی که می‌خواهی برای تمام کاربران ثبت‌نام‌شده ارسال شود را در یک پیام بفرست:")
+                return
+
+            if data == "ADMIN:BROADCAST:CONFIRM":
+                state = user_states.get(user_id, {})
+                broadcast_text = state.get("data", {}).get("text")
+                if not broadcast_text:
+                    await callback.message.reply("❌ پیام برای ارسال پیدا نشد.", components=admin_keyboard())
+                    clear_state(user_id)
+                    return
+                clear_state(user_id)
+                await callback.message.edit("⏳ **در حال ارسال پیام همگانی...**")
+                sent, failed = await admin_broadcast(user_id, broadcast_text)
+                await callback.message.reply(
+                    f"✅ **ارسال همگانی تمام شد.**\n\n📨 موفق: **{sent:,}**\n❌ ناموفق: **{failed:,}**",
+                    components=admin_keyboard()
+                )
+                return
+
+            if data == "ADMIN:SPECIAL":
+                text, markup = await admin_special_users_text()
+                await callback.message.edit(text, components=markup)
+                return
+
+            if data.startswith("ADMIN:SPECIAL:") or data.startswith("ADMIN:UNSPECIAL:"):
+                parts = data.split(":", 2)
+                uid = parts[2]
+                special = parts[1] == "SPECIAL"
+                ok = await set_special_user(uid, special)
+                if ok:
+                    text, markup = await admin_user_detail(uid)
+                    await callback.message.edit(text, components=markup)
+                else:
+                    await callback.message.reply("❌ تغییر وضعیت کاربر انجام نشد.", components=admin_back_keyboard())
+                return
+
+            if data == "ADMIN:ALERTS":
+                await callback.message.edit(await admin_alerts_text(), components=admin_back_keyboard())
+                return
+
+            if data == "ADMIN:FAVS":
+                count = await favorites_collection.count_documents({}) if favorites_collection is not None else 0
+                await callback.message.edit(
+                    f"⭐ **آمار علاقه‌مندی‌ها**\n\nتعداد کل آیتم‌های ذخیره‌شده: **{count:,}**",
+                    components=admin_back_keyboard()
+                )
+                return
+
+            if data == "ADMIN:HEALTH":
+                await callback.message.edit(await admin_health_text(), components=admin_back_keyboard())
+                return
+        except Exception as admin_error:
+            print(f"❌ Admin callback error: {admin_error}", flush=True)
+            try:
+                await callback.message.reply("❌ خطایی در پنل مدیریت رخ داد.", components=admin_keyboard())
+            except:
+                pass
+            return
+
+    if data == "PROFILE:LOGOUT":
+        user = await get_active_user(user_id)
+        lang = user.get("language", "fa") if user else "fa"
+        try:
+            await callback.message.edit(t("logout_confirm", lang), components=logout_confirm_keyboard(lang))
+        except:
+            await callback.message.reply(t("logout_confirm", lang), components=logout_confirm_keyboard(lang))
+        return
+
+    if data == "PROFILE:LOGOUT:CONFIRM":
+        user = await get_active_user(user_id)
+        lang = user.get("language", "fa") if user else "fa"
+        ok = await logout_user(user_id)
+        if ok:
+            await callback.message.edit(t("logout_done", lang))
+        else:
+            await callback.message.reply(t("error", lang))
+        return
+
+    raw_callback_user = await get_user(user_id)
+    if raw_callback_user and raw_callback_user.get("blocked") and not is_admin(user_id):
+        await callback.message.reply("🚫 دسترسی این حساب توسط مدیریت محدود شده است.")
+        return
+
+    if data == "FORCEJOIN:VERIFY":
+        clear_force_join_cache(user_id)
+        user = await get_active_user(user_id)
+        pending = user_states.get(user_id, {})
+        pending_data = pending.get("data", {})
+
+        is_member = await check_channel_membership(user_id, use_cache=False)
+        if not is_member:
+            lang = user.get("language", "fa") if user else "fa"
+            try:
+                await callback.message.edit(
+                    t("force_join_not_member", lang),
+                    components=force_join_keyboard(lang)
+                )
+            except:
+                await callback.message.reply(
+                    t("force_join_not_member", lang),
+                    components=force_join_keyboard(lang)
+                )
+            return
+
+        if not user:
+            referred_by = pending_data.get("referred_by")
+            user_states[user_id] = {
+                "state": "awaiting_language",
+                "data": {"referred_by": referred_by}
+            }
+            try:
+                await callback.message.edit(
+                    t("choose_language", "fa"),
+                    components=language_keyboard()
+                )
+            except:
+                await callback.message.reply(
+                    t("choose_language", "fa"),
+                    components=language_keyboard()
+                )
+            return
+
+        clear_state(user_id)
+        await show_main_menu(callback.message, user_id, edit=True)
+        return
+
+    existing_user = await get_user(user_id)
+    if existing_user:
+        is_member = await check_channel_membership(user_id)
+        if not is_member:
+            lang = existing_user.get("language", "fa")
+            try:
+                await callback.message.edit(
+                    t("force_join_title", lang) + "\n\n" +
+                    t("force_join_text", lang, channel=CHANNEL_ID),
+                    components=force_join_keyboard(lang)
+                )
+            except:
+                try:
+                    await callback.message.reply(
+                        t("force_join_title", lang) + "\n\n" +
+                        t("force_join_text", lang, channel=CHANNEL_ID),
+                        components=force_join_keyboard(lang)
+                    )
+                except:
+                    pass
+            return
+
+    user = existing_user
+    if not user and data.startswith("LANG:"):
+        pending = user_states.get(user_id, {})
+        if pending.get("state") != "awaiting_language":
+            try:
+                await callback.message.edit(
+                    t("force_join_title", "fa") + "\n\n" +
+                    t("force_join_text", "fa", channel=CHANNEL_ID),
+                    components=force_join_keyboard("fa")
+                )
+            except:
+                pass
+            return
+
+    if data.startswith("LANG:"):
+        new_lang = data.split(":")[1]
+        if new_lang not in ["fa", "en"]:
+            new_lang = "fa"
+
+        if user_id in user_states and user_states[user_id]["state"] == "changing_language":
+            user = await get_user(user_id)
+            if user:
+                await create_user(user_id, user.get("name", ""), user.get("phone", ""), new_lang)
+                clear_lang_cache(user_id)
+                clear_state(user_id)
+                await show_main_menu(callback.message, user_id, edit=True)
+                return
+
+        current_data = user_states.get(user_id, {}).get("data", {})
+        referred_by = current_data.get("referred_by")
+        user_states[user_id] = {"state": "awaiting_name", "data": {"lang": new_lang, "referred_by": referred_by}}
+        try:
+            await callback.message.edit(t("welcome_new", new_lang))
+        except:
+            await callback.message.reply(t("welcome_new", new_lang))
+        return
+
+    user = await get_user(user_id)
+    if not user:
+        try:
+            await callback.message.reply(t("choose_language", "fa"), components=language_keyboard())
+        except:
+            pass
+        return
+
+    lang = await get_user_language(user_id)
+
+    if data in {"MENU:MYALERTS", "ALERT:NEW"} or data.startswith("ALERT:"):
+        if not await has_pro_access(user_id):
+            invite_count = await get_effective_invite_count(user_id)
+            await callback.message.reply(
+                t("pro_locked", lang) + f"\n\n📊 دعوت‌های شما: **{invite_count}** از **{PRO_INVITE_THRESHOLD}**" + footer_text(lang),
+                components=main_menu_keyboard(lang)
+            )
+            return
+
+    if data == "MENU:MAIN":
+        clear_state(user_id)
+        await show_main_menu(callback.message, user_id, edit=True)
+        return
+
+    if data == "MENU:HELP":
+        await show_help(callback.message, user_id, edit=True)
+        return
+
+    if data == "MENU:PROFILE":
+        await show_profile(callback.message, user_id, edit=True)
+        return
+
+    if data == "MENU:INVITE":
+        await show_invite(callback.message, user_id, edit=True)
+        return
+
+    if data == "MENU:LEADERBOARD":
+        await show_leaderboard(callback.message, user_id, edit=True)
+        return
+
+    if data == "INVITE:COPY":
+        invite_link = f"https://ble.ir/{BOT_USERNAME}?start={user_id}"
+        await callback.message.reply(
+            f"📋 لینک دعوت شما:\n`{invite_link}`\n\n"
+            "روی متن بالا کلیک کنید تا کپی شود." + footer_text(lang)
+        )
+        return
+
+    if data == "MENU:LANG":
+        user_states[user_id] = {"state": "changing_language", "data": {}}
+        try:
+            await callback.message.edit(t("choose_language", lang), components=language_keyboard())
+        except:
+            await callback.message.reply(t("choose_language", lang), components=language_keyboard())
+        return
+
+    if data == "MENU:MARKET" or data == "MARKET:REFRESH":
+        clear_state(user_id)
+        await show_market_dashboard(callback.message, user_id, edit=True)
+        return
+
+    # --- هندل کردن دکمه نفت برنت ---
+    if data == "MENU:OIL":
+        clear_state(user_id)
+        oil_data = fetch_brent_oil_price()
+        if oil_data:
+            text = (
+                f"🛢️ **نفت برنت (Brent Crude)**\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"💰 قیمت: **{format_price(oil_data['price'])} {oil_data.get('currency', 'USD')}**\n"
+                f"🕐 آخرین به‌روزرسانی: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"━━━━━━━━━━━━━━━━━━"
+            )
+        else:
+            text = "❌ در حال حاضر امکان دریافت قیمت نفت وجود ندارد."
+        
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=0)
+        try:
+            await callback.message.edit(text + footer_text(lang), components=markup)
+        except:
+            await callback.message.reply(text + footer_text(lang), components=markup)
+        return
+    # --------------------------------
+
+    if data == "MENU:CRYPTO":
+        clear_state(user_id)
+        try:
+            await callback.message.edit(t("crypto_title", lang) + footer_text(lang), components=crypto_menu_keyboard(lang))
+        except:
+            await callback.message.reply(t("crypto_title", lang) + footer_text(lang), components=crypto_menu_keyboard(lang))
+        return
+
+    if data == "MENU:FIAT":
+        clear_state(user_id)
+        try:
+            await callback.message.edit(t("fiat_title", lang) + footer_text(lang), components=fiat_menu_keyboard(lang))
+        except:
+            await callback.message.reply(t("fiat_title", lang) + footer_text(lang), components=fiat_menu_keyboard(lang))
+        return
+
+    if data == "MENU:GOLD":
+        clear_state(user_id)
+        try:
+            await callback.message.edit(t("gold_title", lang) + footer_text(lang), components=gold_menu_keyboard(lang))
+        except:
+            await callback.message.reply(t("gold_title", lang) + footer_text(lang), components=gold_menu_keyboard(lang))
+        return
+
+    if data == "MENU:MYALERTS":
+        await show_my_alerts(callback.message, user_id, edit=True)
+        return
+
+    if data == "MENU:LIST":
+        try:
+            response = requests.get(CRYPTO_API_URL, timeout=20)
+            markets_data = response.json().get("data", {}).get("markets", {})
+            symbols = []
+            if isinstance(markets_data, dict):
+                symbols = list(markets_data.keys())
+            elif isinstance(markets_data, list):
+                symbols = [item.get("symbol") for item in markets_data if item.get("symbol")]
+            clean_symbols = [s.replace("IRT", "") for s in symbols if "IRT" in s] or symbols
+            chunks = [clean_symbols[i:i + 50] for i in range(0, len(clean_symbols), 50)]
+            await callback.message.reply("📋 **لیست:**\n")
+            for chunk in chunks:
+                await callback.message.reply("، ".join(chunk))
+            markup = InlineKeyboardMarkup()
+            markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=0)
+            await callback.message.reply("🔙", components=markup)
+        except Exception as e:
+            print(f"Error: {e}", flush=True)
+        return
+
+    if data.startswith("CRYPTO:"):
+        parts = data.split(":")
+        if len(parts) >= 2:
+            await process_crypto_and_reply(callback.message, parts[1], user_id)
+        return
+
+    if data.startswith("FIAT:"):
+        parts = data.split(":")
+        if len(parts) >= 2:
+            await process_fiat_and_reply(callback.message, parts[1], user_id)
+        return
+
+    if data.startswith("GOLD:"):
+        parts = data.split(":")
+        if len(parts) >= 2:
+            await process_gold_and_reply(callback.message, parts[1], user_id)
+        return
+
+    if data == "FAV:VIEW":
+        clear_state(user_id)
+        await show_favorites(callback.message, user_id, edit=True)
+        return
+
+    if data == "FAV:NEW":
+        clear_state(user_id)
+        try:
+            await callback.message.edit("⭐ **افزودن**\n\nکدام دسته؟" + footer_text(lang), components=fav_category_keyboard(lang))
+        except:
+            await callback.message.reply("⭐ **افزودن**\n\nکدام دسته؟" + footer_text(lang), components=fav_category_keyboard(lang))
+        return
+
+    if data.startswith("FAV:CAT:"):
+        parts = data.split(":")
+        category = parts[2] if len(parts) >= 3 else None
+        if not category:
+            return
+        user_favs = await get_user_favorites(user_id)
+        try:
+            await callback.message.edit("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
+        except:
+            await callback.message.reply("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
+        return
+
+    if data.startswith("FAV:ADD:"):
+        parts = data.split(":")
+        asset = parts[2] if len(parts) >= 3 else None
+        if not asset:
+            return
+        added = await add_favorite(user_id, asset)
+        asset_name = get_asset_display_name(asset)
+        await callback.message.reply(f"{'✅' if added else 'ℹ️'} **{asset_name}** {'اضافه شد!' if added else 'قبلاً بود.'}" + footer_text(lang))
+        category = "crypto" if asset in POPULAR_CRYPTOS else "fiat" if asset in POPULAR_FIATS else "gold"
+        user_favs = await get_user_favorites(user_id)
+        try:
+            await callback.message.edit("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
+        except:
+            pass
+        return
+
+    if data.startswith("FAV:DEL:"):
+        parts = data.split(":")
+        asset = parts[2] if len(parts) >= 3 else None
+        if not asset:
+            return
+        await remove_favorite(user_id, asset)
+        asset_name = get_asset_display_name(asset)
+        await callback.message.reply(f"🗑 **{asset_name}** حذف شد." + footer_text(lang))
+        category = "crypto" if asset in POPULAR_CRYPTOS else "fiat" if asset in POPULAR_FIATS else "gold"
+        user_favs = await get_user_favorites(user_id)
+        try:
+            await callback.message.edit("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
+        except:
+            pass
+        return
+
+    if data.startswith("DELALERT:"):
+        parts = data.split(":")
+        if len(parts) >= 2:
+            asset = parts[1]
+            if asset == "ALL":
+                count = await remove_all_user_alerts(user_id)
+                await callback.message.reply(f"🗑 **{count} هشدار حذف شد.**" + footer_text(lang))
+                await show_my_alerts(callback.message, user_id, edit=False)
+            else:
+                await remove_alert(user_id, asset)
+                await callback.message.reply(f"🗑 هشدار **{get_asset_display_name(asset)}** حذف شد." + footer_text(lang))
+                await show_my_alerts(callback.message, user_id, edit=False)
+        return
+
+    if data == "ALERT:NEW":
+        clear_state(user_id)
+        try:
+            await callback.message.edit("🔔 **ثبت هشدار**\n\nدسته‌بندی:" + footer_text(lang), components=alert_asset_category_keyboard(lang))
+        except:
+            await callback.message.reply("🔔 **ثبت هشدار**\n\nدسته‌بندی:" + footer_text(lang), components=alert_asset_category_keyboard(lang))
+        return
+
+    if data.startswith("ALERT:CAT:"):
+        parts = data.split(":")
+        category = parts[2] if len(parts) >= 3 else None
+        if not category:
+            return
+        try:
+            await callback.message.edit("🔔 **انتخاب دارایی:**", components=alert_asset_list_keyboard(category, lang))
+        except:
+            await callback.message.reply("🔔 **انتخاب دارایی:**", components=alert_asset_list_keyboard(category, lang))
+        return
+
+    if data == "ALERT:MANUAL":
+        user_states[user_id] = {"state": "alert_awaiting_manual_asset", "data": {"lang": lang}}
+        await callback.message.reply("✏️ **نام دارایی را وارد کنید:**\n\n🔸 `BTC`\n🔸 `USD`\n🔸 `coin_emami`" + footer_text(lang))
+        return
+
+    if data.startswith("ALERT:SET:"):
+        parts = data.split(":")
+        asset = parts[2] if len(parts) >= 3 else None
+        if not asset:
+            return
+        user_states[user_id] = {"state": "alert_awaiting_price", "data": {"asset": asset, "lang": lang}}
+        current = get_current_price(asset)
+        current_text = f"\n💰 قیمت فعلی: {format_price(current['price'])} تومان" if current else ""
+        try:
+            await callback.message.edit(f"✅ **{get_asset_display_name(asset)}**{current_text}\n\n🎯 قیمت هدف را وارد کنید:" + footer_text(lang))
+        except:
+            await callback.message.reply(f"✅ **{get_asset_display_name(asset)}**{current_text}\n\n🎯 قیمت هدف را وارد کنید:" + footer_text(lang))
+        return
+
+    if data.startswith("ALERT:DIR:"):
+        parts = data.split(":")
+        direction = parts[2] if len(parts) >= 3 else None
+        if not direction:
+            return
+        if user_id not in user_states or "asset" not in user_states[user_id]["data"] or "target_price" not in user_states[user_id]["data"]:
+            await callback.message.reply("❌ خطا. دوباره شروع کنید.", components=main_menu_keyboard(lang))
+            return
+        asset = user_states[user_id]["data"]["asset"]
+        target_price = user_states[user_id]["data"]["target_price"]
+        current = get_current_price(asset)
+        if not current or current.get("price") is None:
+            await callback.message.reply("❌ در حال حاضر قیمت این دارایی در دسترس نیست. لطفاً کمی بعد دوباره تلاش کنید." + footer_text(lang))
+            return
+        ok = await add_alert(user_id, asset, target_price, direction)
+        if not ok:
+            await callback.message.reply("❌ ثبت هشدار انجام نشد. دوباره تلاش کنید." + footer_text(lang))
+            return
+        clear_state(user_id)
+        direction_text = "بالا برود 📈" if direction == "above" else "پایین بیاید 📉"
+        text = (
+            f"✅ **هشدار ثبت شد!**\n━━━━━━━━━━━━━━━━━━\n🔔 **{get_asset_display_name(asset)}**\n"
+            f"🎯 قیمت هدف: **{format_price(target_price)} تومان**\n"
+            f"📊 {direction_text}\n━━━━━━━━━━━━━━━━━━" + footer_text(lang)
+        )
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(text=t("menu_alert", lang), callback_data="ALERT:NEW"), row=0)
+        markup.add(InlineKeyboardButton(text=t("menu_myalerts", lang), callback_data="MENU:MYALERTS"), row=1)
+        markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=2)
+        try:
+            await callback.message.edit(text, components=markup)
+        except:
+            await callback.message.reply(text, components=markup)
+        return
+
+    if data == "ALERT:CANCEL":
+        clear_state(user_id)
+        await callback.message.reply(t("cancel", lang), components=main_menu_keyboard(lang))
+        return
+
+    if data == "CONV:NEW":
+        clear_state(user_id)
+        try:
+            await callback.message.edit("🔄 **مبدل ارز**\n\nمرحله ۱: **ارز مبدأ؟**" + footer_text(lang), components=convert_from_keyboard(lang))
+        except:
+            await callback.message.reply("🔄 **مبدل ارز**\n\nمرحله ۱: **ارز مبدأ؟**" + footer_text(lang), components=convert_from_keyboard(lang))
+        return
+
+    if data.startswith("CONV:FROM:"):
+        parts = data.split(":")
+        from_asset = parts[2] if len(parts) >= 3 else None
+        if not from_asset:
+            return
+        user_states[user_id] = {"state": "convert_awaiting_amount", "data": {"from_asset": from_asset, "lang": lang}}
+        try:
+            await callback.message.edit(f"✅ **{get_asset_display_name(from_asset)}**\n\nمرحله ۲: **مقدار؟**" + footer_text(lang))
+        except:
+            await callback.message.reply(f"✅ **{get_asset_display_name(from_asset)}**\n\nمرحله ۲: **مقدار؟**" + footer_text(lang))
+        return
+
+    if data.startswith("CONV:TO:"):
+        parts = data.split(":")
+        to_asset = parts[2] if len(parts) >= 3 else None
+        if not to_asset:
+            return
+        if user_id not in user_states or "from_asset" not in user_states[user_id]["data"] or "amount" not in user_states[user_id]["data"]:
+            await callback.message.reply("❌ خطا. دوباره شروع کنید.", components=main_menu_keyboard(lang))
+            return
+        from_asset = user_states[user_id]["data"]["from_asset"]
+        amount = user_states[user_id]["data"]["amount"]
+        clear_state(user_id)
+        await do_convert(callback.message, amount, from_asset, to_asset, user_id)
+        return
+
+    if data == "CONV:CANCEL":
+        clear_state(user_id)
+        await callback.message.reply(t("cancel", lang), components=main_menu_keyboard(lang))
+        return
+
+
+# --- سرور وب ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+threading.Thread(target=run_web_server, daemon=True).start()
+
+bot.run()
