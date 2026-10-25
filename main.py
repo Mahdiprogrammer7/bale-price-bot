@@ -11,12 +11,14 @@ from bale import Bot, Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboa
 import requests
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.server_api import ServerApi
+from oilpriceapi import OilPriceAPI  # <--- ایمپورت جدید برای نفت
 
 # ==================== تنظیمات ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 DEVELOPER_NAME = os.environ.get("DEVELOPER_NAME", "مهدی نجفی")
 FEEDBACK_ID = os.environ.get("FEEDBACK_ID", "@mahdi8iiii")
 MONGO_URI = os.environ.get("MONGO_URI", "")
+OIL_PRICE_API_KEY = os.environ.get("OIL_PRICE_API_KEY", "") # <--- کلید API نفت
 
 CRYPTO_API_URL = 'https://api.abantether.com/api/v1/manager/otc/ticker'
 FIAT_API_URL = 'https://cdn.jsdelivr.net/gh/HosseinOdd/Navasan-API@main/data/fiat.json'
@@ -37,7 +39,6 @@ WELCOME_IMAGE_URL = ""
 BOT_USERNAME = "onlinearzmonybot"  # بدون @
 
 # 👨‍💻 مدیران بات - در Render به صورت ENV تنظیم کن:
-# ADMIN_IDS=123456789,987654321
 ADMIN_IDS = {x.strip() for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()}
 ADMIN_PAGE_SIZE = 8
 # 🎁 دسترسی حرفه‌ای: ۵ دعوت یا بیشتر
@@ -61,6 +62,7 @@ TRANSLATIONS = {
         "menu_crypto": "🪙 ارز دیجیتال",
         "menu_fiat": "💵 ارزهای فیات",
         "menu_gold": "🥇 طلا و سکه",
+        "menu_oil": "🛢️ نفت برنت", # <--- دکمه نفت
         "menu_convert": "🔄 مبدل ارز",
         "menu_market": "📊 بازار امروز",
         "menu_fav": "⭐ علاقه‌مندی‌ها",
@@ -72,7 +74,7 @@ TRANSLATIONS = {
         "menu_leaderboard": "🏆 جدول قهرمانان",
         "menu_help": "ℹ️ راهنما",
         "help_title": "ℹ️ *راهنمای ارز آنلاین*",
-        "help_text": "به *ارز آنلاین* خوش آمدی! 👋\n\nاین بات برای دسترسی سریع به قیمت ارزها، رمزارزها، طلا و سکه و چند ابزار کاربردی بازار ساخته شده است.\n\n🪙 *ارز دیجیتال*\nقیمت رمزارزها را ببین و از فهرست رمزارزها استفاده کن.\n\n💵 *ارزهای فیات*\nقیمت ارزهای رایج مثل دلار و یورو را بررسی کن.\n\n🥇 *طلا و سکه*\nقیمت طلا و انواع سکه را مشاهده کن.\n\n🔄 *مبدل ارز*\nمقدار یک ارز را به ارز دیگر تبدیل کن.\n\n⭐ *علاقه‌مندی‌ها*\nدارایی‌های مورد علاقه‌ات را ذخیره کن تا سریع‌تر به آن‌ها دسترسی داشته باشی.\n\n🔔 *هشدار قیمت*\nبرای یک دارایی قیمت هدف تعیین کن تا در صورت رسیدن قیمت به محدوده موردنظر، هشدار دریافت کنی.\n\n📋 *هشدارهای من*\nهشدارهای فعال خودت را ببین و مدیریت کن.\n\n🎁 *دعوت دوستان*\nلینک دعوت اختصاصی بگیر و دوستانت را به بات دعوت کن.\n\n🏆 *جدول قهرمانان*\nآمار دعوت کاربران را مشاهده کن.\n\n👤 *پروفایل من*\nاطلاعات حساب و تنظیمات زبانت را مدیریت کن. از همین بخش می‌توانی از حساب خارج شوی و بعداً دوباره ثبت‌نام کنی.\n\n📌 *چند نکته*\n• برای استفاده از هر قابلیت، کافی است از منوی اصلی گزینه مربوط را انتخاب کنی.\n• قیمت‌ها ممکن است با توجه به منبع داده و زمان بروزرسانی تغییر کنند.\n• اگر مشکلی دیدی، از راه ارتباطی درج‌شده در پایین پیام‌ها استفاده کن.\n\n📢 *عضویت در کانال*\nبرای استفاده از بات، ابتدا باید عضو کانال اطلاع‌رسانی ارز آنلاین باشی. بعد از عضویت، دکمه «بررسی عضویت» را بزن تا دسترسی به بات فعال شود.\n\n📢 کانال: {channel}",
+        "help_text": "به *ارز آنلاین* خوش آمدی! 👋\n\nاین بات برای دسترسی سریع به قیمت ارزها، رمزارزها، طلا و سکه و چند ابزار کاربردی بازار ساخته شده است.\n\n🪙 *ارز دیجیتال*\nقیمت رمزارزها را ببین و از فهرست رمزارزها استفاده کن.\n\n💵 *ارزهای فیات*\nقیمت ارزهای رایج مثل دلار و یورو را بررسی کن.\n\n🥇 *طلا و سکه*\nقیمت طلا و انواع سکه را مشاهده کن.\n\n🛢️ *نفت برنت*\nقیمت لحظه‌ای نفت برنت را ببین.\n\n🔄 *مبدل ارز*\nمقدار یک ارز را به ارز دیگر تبدیل کن.\n\n⭐ *علاقه‌مندی‌ها*\nدارایی‌های مورد علاقه‌ات را ذخیره کن تا سریع‌تر به آن‌ها دسترسی داشته باشی.\n\n🔔 *هشدار قیمت*\nبرای یک دارایی قیمت هدف تعیین کن تا در صورت رسیدن قیمت به محدوده موردنظر، هشدار دریافت کنی.\n\n📋 *هشدارهای من*\nهشدارهای فعال خودت را ببین و مدیریت کن.\n\n🎁 *دعوت دوستان*\nلینک دعوت اختصاصی بگیر و دوستانت را به بات دعوت کن.\n\n🏆 *جدول قهرمانان*\nآمار دعوت کاربران را مشاهده کن.\n\n👤 *پروفایل من*\nاطلاعات حساب و تنظیمات زبانت را مدیریت کن. از همین بخش می‌توانی از حساب خارج شوی و بعداً دوباره ثبت‌نام کنی.\n\n📌 *چند نکته*\n• برای استفاده از هر قابلیت، کافی است از منوی اصلی گزینه مربوط را انتخاب کنی.\n• قیمت‌ها ممکن است با توجه به منبع داده و زمان بروزرسانی تغییر کنند.\n• اگر مشکلی دیدی، از راه ارتباطی درج‌شده در پایین پیام‌ها استفاده کن.\n\n📢 *عضویت در کانال*\nبرای استفاده از بات، ابتدا باید عضو کانال اطلاع‌رسانی ارز آنلاین باشی. بعد از عضویت، دکمه «بررسی عضویت» را بزن تا دسترسی به بات فعال شود.\n\n📢 کانال: {channel}",
         "menu_main": "🏠 منوی اصلی",
         "menu_back": "🔙 بازگشت",
         "menu_cancel": "❌ انصراف",
@@ -128,6 +130,7 @@ TRANSLATIONS = {
         "menu_crypto": "🪙 Cryptocurrency",
         "menu_fiat": "💵 Fiat Currencies",
         "menu_gold": "🥇 Gold & Coins",
+        "menu_oil": "🛢️ Brent Oil", # <--- Oil Button
         "menu_convert": "🔄 Currency Converter",
         "menu_market": "📊 Today’s Market",
         "menu_fav": "⭐ Favorites",
@@ -139,7 +142,7 @@ TRANSLATIONS = {
         "menu_leaderboard": "🏆 Leaderboard",
         "menu_help": "ℹ️ Help",
         "help_title": "ℹ️ *Arz Online Guide*",
-        "help_text": "Welcome to *Arz Online*! 👋\n\nThis bot gives you quick access to cryptocurrency, fiat currency, gold and coin prices, plus useful market tools.\n\n🪙 *Cryptocurrency*\nView cryptocurrency prices and browse the available coins.\n\n💵 *Fiat Currencies*\nCheck prices for common currencies such as USD and EUR.\n\n🥇 *Gold & Coins*\nView gold and coin prices.\n\n🔄 *Currency Converter*\nConvert an amount from one supported currency or asset to another.\n\n⭐ *Favorites*\nSave assets you use often for quicker access.\n\n🔔 *Price Alert*\nSet a target price and receive an alert when the selected asset reaches it.\n\n📋 *My Alerts*\nView and manage your active price alerts.\n\n🎁 *Invite Friends*\nGet your personal invite link and invite friends to the bot.\n\n🏆 *Leaderboard*\nView invitation statistics and rankings.\n\n👤 *My Profile*\nManage your account information and language. You can also log out and register again later.\n\n📌 *A few notes*\n• Choose any feature directly from the main menu.\n• Prices may change depending on the data source and update time.\n• If you have a problem, use the contact information shown at the bottom of messages.\n\n📢 *Channel Membership*\nTo use the bot, first join the Arz Online information channel. After joining, press the membership verification button to activate access.\n\n📢 Channel: {channel}",
+        "help_text": "Welcome to *Arz Online*! 👋\n\nThis bot gives you quick access to cryptocurrency, fiat currency, gold and coin prices, plus useful market tools.\n\n🪙 *Cryptocurrency*\nView cryptocurrency prices and browse the available coins.\n\n💵 *Fiat Currencies*\nCheck prices for common currencies such as USD and EUR.\n\n🥇 *Gold & Coins*\nView gold and coin prices.\n\n🛢️ *Brent Oil*\nView live Brent Crude price.\n\n🔄 *Currency Converter*\nConvert an amount from one supported currency or asset to another.\n\n⭐ *Favorites*\nSave assets you use often for quicker access.\n\n🔔 *Price Alert*\nSet a target price and receive an alert when the selected asset reaches it.\n\n📋 *My Alerts*\nView and manage your active price alerts.\n\n🎁 *Invite Friends*\nGet your personal invite link and invite friends to the bot.\n\n🏆 *Leaderboard*\nView invitation statistics and rankings.\n\n👤 *My Profile*\nManage your account information and language. You can also log out and register again later.\n\n📌 *A few notes*\n• Choose any feature directly from the main menu.\n• Prices may change depending on the data source and update time.\n• If you have a problem, use the contact information shown at the bottom of messages.\n\n📢 *Channel Membership*\nTo use the bot, first join the Arz Online information channel. After joining, press the membership verification button to activate access.\n\n📢 Channel: {channel}",
         "menu_main": "🏠 Main Menu",
         "menu_back": "🔙 Back",
         "menu_cancel": "❌ Cancel",
@@ -272,9 +275,6 @@ async def init_db():
                     existing_unique = bool(idx.get("unique", False))
                     existing_name = idx.get("name")
                     if existing_keys == requested_keys:
-                        # اگر Index موجود همان key را دارد، از همان استفاده می‌کنیم.
-                        # مخصوصاً اگر Index قدیمی unique=True باشد، هرگز Index معمولی
-                        # با همان نام/کلید ایجاد نمی‌کنیم.
                         if existing_unique == bool(unique):
                             print(
                                 f"ℹ️ Index موجود است: {collection.name} / {existing_name} / unique={existing_unique}",
@@ -293,12 +293,8 @@ async def init_db():
                 created_name = await collection.create_index(keys, **options)
                 print(f"✅ Index ساخته شد: {collection.name} / {created_name}", flush=True)
             except Exception as index_error:
-                # خطای Index نباید مانع بالا آمدن بات شود.
                 print(f"⚠️ Index warning ({getattr(collection, 'name', 'unknown')}): {index_error}", flush=True)
 
-        # هر Index فقط یک‌بار و با مشخصات مشخص مدیریت می‌شود.
-        # مهم: قبل از create_index، Indexهای موجود بررسی می‌شوند تا
-        # خطای IndexKeySpecsConflict در Deployهای بعدی تکرار نشود.
         await ensure_index(users_collection, "chat_id", unique=True, name="users_chat_id_unique")
         await ensure_index(
             users_collection,
@@ -409,12 +405,6 @@ def get_asset_display_name(asset_key):
 
 # --- توابع دیتابیس: کاربران ---
 def _chat_id_variants(chat_id):
-    """شناسه کاربر را به شکل‌های سازگار با نسخه‌های قدیمی/جدید آماده می‌کند.
-
-    نسخه‌های قدیمی ممکن است chat_id را به صورت عددی در MongoDB ذخیره کرده باشند،
-    در حالی که نسخه جدید آن را به صورت رشته ذخیره می‌کند. برای جلوگیری از
-    ثبت‌نام مجدد کاربران قدیمی، هر دو نوع را جستجو می‌کنیم.
-    """
     sid = str(chat_id)
     variants = [sid]
     try:
@@ -438,12 +428,8 @@ def _chat_id_filter(chat_id):
 async def get_user(chat_id):
     if users_collection is None:
         return None
-    # در زمان Deploy/اختلال کوتاه MongoDB، چند بار تلاش می‌کنیم تا
-    # کاربر قدیمی به اشتباه «جدید» تشخیص داده نشود.
     for attempt in range(3):
         try:
-            # سازگاری با کاربران ثبت‌نام‌شده در نسخه‌های قبلی:
-            # chat_id ممکن است int یا str باشد.
             user = await users_collection.find_one(_chat_id_filter(chat_id))
             if user:
                 return user
@@ -456,7 +442,6 @@ async def get_user(chat_id):
 
 
 async def get_active_user(chat_id):
-    """فقط حساب فعال را برمی‌گرداند؛ حسابی که کاربر عمداً از آن خارج شده فعال محسوب نمی‌شود."""
     user = await get_user(chat_id)
     if user and user.get("account_status", "active") != "logged_out":
         return user
@@ -464,7 +449,6 @@ async def get_active_user(chat_id):
 
 
 async def logout_user(chat_id):
-    """خروج نرم: رکورد حذف نمی‌شود تا سابقه و آمار حفظ شود، اما حساب برای /start بعدی غیرفعال می‌شود."""
     if users_collection is None:
         return False
     try:
@@ -503,19 +487,10 @@ async def set_user_blocked(chat_id, blocked=True):
 
 
 async def create_user(chat_id, name, phone=None, language="fa", referred_by=None):
-    """ثبت/به‌روزرسانی کاربر.
-
-    نکته مهم سازگاری:
-    - کاربران قدیمی که phone دارند دست‌نخورده می‌مانند.
-    - کاربران جدید از این نسخه به بعد اصلاً phone دریافت نمی‌کنند.
-    - تغییر زبان یا اطلاعات کاربر قدیمی، phone قبلی را پاک نمی‌کند.
-    """
     if users_collection is None:
         return False
     chat_id = str(chat_id)
     try:
-        # ابتدا هم رکوردهای جدید (chat_id رشته‌ای) و هم رکوردهای قدیمی
-        # (chat_id عددی) را پیدا می‌کنیم.
         existing = await users_collection.find_one(_chat_id_filter(chat_id))
         if existing:
             update = {
@@ -525,13 +500,9 @@ async def create_user(chat_id, name, phone=None, language="fa", referred_by=None
                 "updated_at": time.time(),
                 "last_seen_at": time.time(),
             }
-            # فقط اگر صراحتاً phone داده شده باشد، مقدار قبلی را تغییر بده.
-            # ثبت‌نام جدید phone=None دارد و بنابراین شماره قدیمی کاربران قبلی حذف نمی‌شود.
             if phone is not None:
                 update["phone"] = phone
 
-            # با _id خود رکورد آپدیت می‌کنیم تا چه chat_id قدیمی عددی باشد
-            # چه رشته‌ای، همان کاربر قبلی حفظ شود.
             await users_collection.update_one({"_id": existing["_id"]}, {"$set": update})
             return True
 
@@ -548,7 +519,6 @@ async def create_user(chat_id, name, phone=None, language="fa", referred_by=None
             "referred_by": str(referred_by) if referred_by else None,
             "invite_count": 0,
         }
-        # phone عمداً برای کاربران جدید ذخیره نمی‌شود.
         await users_collection.insert_one(doc)
 
         if referred_by and str(referred_by) != chat_id and referrals_collection is not None:
@@ -623,11 +593,9 @@ async def get_invite_count(chat_id):
 
 
 async def get_user_rank(chat_id):
-    """رتبه کاربر بر اساس تعداد دعوت‌شده"""
     if users_collection is None:
         return 0
     try:
-        # تعداد کاربرانی که بیشتر از این کاربر دعوت کردن
         my_count = await get_invite_count(chat_id)
         higher = await users_collection.count_documents({"invite_count": {"$gt": my_count}})
         return higher + 1
@@ -636,7 +604,6 @@ async def get_user_rank(chat_id):
 
 
 async def get_leaderboard(limit=10):
-    """گرفتن برترین دعوت‌کنندگان"""
     if users_collection is None:
         return []
     try:
@@ -660,7 +627,6 @@ async def get_effective_invite_count(chat_id):
 
 
 async def has_pro_access(chat_id):
-    """دسترسی حرفه‌ای: کاربر خاص یا حداقل آستانه دعوت."""
     user = await get_user(chat_id)
     if not user or user.get("blocked"):
         return False
@@ -775,17 +741,6 @@ async def is_favorite(chat_id, asset_key):
 
 # --- عضویت اجباری ---
 async def check_channel_membership(user_id, use_cache=True):
-    """بررسی حرفه‌ای عضویت کاربر در کانال بله.
-
-    نکات مهم:
-    - برای جلوگیری از مشکل پروکسی سفارشی، بررسی عضویت مستقیماً از Bale Bot API انجام می‌شود.
-    - نتیجه status هم در حالت رشته و هم در حالت Enum/آبجکت مدیریت می‌شود.
-    - در صورت خطا، کاربر عضو فرض نمی‌شود (fail-closed).
-    - دکمه «بررسی عضویت» همیشه cache را دور می‌زند.
-
-    طبق مستندات python-bale-bot، get_chat_member برای بررسی کاربران دیگر
-    عملاً نیازمند دسترسی مدیریتی مناسب بات در کانال است.
-    """
     user_id = str(user_id)
     now = time.time()
 
@@ -795,7 +750,6 @@ async def check_channel_membership(user_id, use_cache=True):
             return True
         _force_join_cache.pop(user_id, None)
 
-    # اول API مستقیم Bale را امتحان می‌کنیم تا Proxy سفارشی روی بررسی عضویت اثر نگذارد.
     api_url = f"https://tapi.bale.ai/bot{BOT_TOKEN}/getChatMember"
     payload = {
         "chat_id": CHANNEL_ID,
@@ -825,8 +779,6 @@ async def check_channel_membership(user_id, use_cache=True):
         result = body.get("result") or {}
         raw_status = result.get("status")
 
-        # Bale API معمولاً status را به صورت member / administrator / creator برمی‌گرداند.
-        # این نرمال‌سازی برای نسخه‌هایی که status را به شکل Enum یا رشته نمایشی می‌دهند هم هست.
         status_candidates = {
             str(raw_status).strip().lower(),
             str(getattr(raw_status, "value", "")).strip().lower(),
@@ -845,7 +797,6 @@ async def check_channel_membership(user_id, use_cache=True):
             "chatmemberstatus.creator",
         }))
 
-        # بعض نسخه‌ها ممکن است status را با قالب enum چاپ کنند؛ انتهای مقدار را هم بررسی می‌کنیم.
         if not is_member:
             for candidate in status_candidates:
                 if candidate.endswith(".member") or candidate.endswith(".administrator") or candidate.endswith(".creator"):
@@ -870,8 +821,6 @@ async def check_channel_membership(user_id, use_cache=True):
             flush=True,
         )
 
-        # اگر API مستقیم در دسترس نبود، یک fallback به خود کتابخانه Bale می‌زنیم.
-        # این fallback هم fail-closed است.
         try:
             response = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=int(user_id))
             if response is None:
@@ -913,17 +862,46 @@ async def check_channel_membership(user_id, use_cache=True):
 
 
 def clear_force_join_cache(user_id):
-    """حذف نتیجه کش عضویت برای بررسی مجدد واقعی."""
     _force_join_cache.pop(str(user_id), None)
 
 
 # --- قیمت‌ها ---
 _fiat_cache = {"data": None, "timestamp": 0}
 _FIAT_CACHE_TTL = 120
-_gold_cache = {}  # {asset: {"data": ..., "timestamp": ...}}
+_gold_cache = {}
 _GOLD_CACHE_TTL = 45
-_price_cache = {}  # {asset: {"data": ..., "timestamp": ...}}
+_price_cache = {}
 _PRICE_CACHE_TTL = 20
+
+# کش اختصاصی برای نفت برنت
+_oil_cache = {"data": None, "timestamp": 0}
+_OIL_CACHE_TTL = 300  # 5 minutes
+
+def fetch_brent_oil_price():
+    now = time.time()
+    if _oil_cache["data"] and (now - _oil_cache["timestamp"]) < _OIL_CACHE_TTL:
+        return _oil_cache["data"]
+
+    if not OIL_PRICE_API_KEY:
+        print("⚠️ OIL_PRICE_API_KEY is not set.", flush=True)
+        return None
+
+    try:
+        client = OilPriceAPI(api_key=OIL_PRICE_API_KEY)
+        brent_data = client.prices.get("BRENT_CRUDE_USD")
+        
+        data = {
+            "symbol": "BRENT",
+            "price": brent_data.value,
+            "currency": brent_data.currency,
+            "change_percent": None
+        }
+        _oil_cache["data"] = data
+        _oil_cache["timestamp"] = now
+        return data
+    except Exception as e:
+        print(f"❌ Oil API error: {type(e).__name__}: {e}", flush=True)
+        return _oil_cache["data"] if _oil_cache["data"] else None
 
 
 def _get_all_fiat_data():
@@ -1131,7 +1109,6 @@ def _fetch_gold_data_uncached(asset_key: str):
 
 
 def fetch_gold_data(asset_key: str):
-    """دریافت قیمت طلا با Cache کوتاه‌مدت برای کاهش فشار روی API."""
     now = time.time()
     cached = _gold_cache.get(asset_key)
     if cached and (now - cached["timestamp"]) < _GOLD_CACHE_TTL:
@@ -1140,7 +1117,6 @@ def fetch_gold_data(asset_key: str):
     if data:
         _gold_cache[asset_key] = {"data": data, "timestamp": now}
         return data
-    # در خطای موقت API، آخرین مقدار سالم را برگردانیم؛ فقط اگر وجود داشته باشد.
     return cached["data"] if cached else None
 
 
@@ -1153,7 +1129,6 @@ def invalidate_price_cache(asset_key=None):
 
 
 def get_current_price(asset_key: str):
-    """قیمت واحد با Cache مرکزی؛ منابع اصلی خودشان نیز Cache دارند."""
     key = str(asset_key).strip().upper()
     now = time.time()
     cached = _price_cache.get(key)
@@ -1191,14 +1166,21 @@ def main_menu_keyboard(lang="fa"):
     markup.add(InlineKeyboardButton(text=t("menu_crypto", lang), callback_data="MENU:CRYPTO"), row=0)
     markup.add(InlineKeyboardButton(text=t("menu_fiat", lang), callback_data="MENU:FIAT"), row=0)
     markup.add(InlineKeyboardButton(text=t("menu_gold", lang), callback_data="MENU:GOLD"), row=1)
-    markup.add(InlineKeyboardButton(text=t("menu_convert", lang), callback_data="CONV:NEW"), row=1)
+    # دکمه نفت اضافه شد
+    markup.add(InlineKeyboardButton(text=t("menu_oil", lang), callback_data="MENU:OIL"), row=1)
+    
+    markup.add(InlineKeyboardButton(text=t("menu_convert", lang), callback_data="CONV:NEW"), row=2)
     markup.add(InlineKeyboardButton(text=t("menu_market", lang), callback_data="MENU:MARKET"), row=2)
+    
     markup.add(InlineKeyboardButton(text=t("menu_fav", lang), callback_data="FAV:VIEW"), row=3)
     markup.add(InlineKeyboardButton(text=t("menu_alert", lang), callback_data="ALERT:NEW"), row=3)
+    
     markup.add(InlineKeyboardButton(text=t("menu_myalerts", lang), callback_data="MENU:MYALERTS"), row=4)
     markup.add(InlineKeyboardButton(text=t("menu_list", lang), callback_data="MENU:LIST"), row=4)
+    
     markup.add(InlineKeyboardButton(text=t("menu_invite", lang), callback_data="MENU:INVITE"), row=5)
     markup.add(InlineKeyboardButton(text=t("menu_leaderboard", lang), callback_data="MENU:LEADERBOARD"), row=5)
+    
     markup.add(InlineKeyboardButton(text=t("menu_profile", lang), callback_data="MENU:PROFILE"), row=6)
     markup.add(InlineKeyboardButton(text=t("menu_help", lang), callback_data="MENU:HELP"), row=7)
     return markup
@@ -1447,7 +1429,6 @@ async def show_main_menu(target, user_id, edit=False):
 
 
 async def show_market_dashboard(target, user_id, edit=False):
-    """داشبورد ساده بازار؛ از Cache فعلی استفاده می‌کند و قابلیت‌های پیچیده اضافه نمی‌کند."""
     lang = await get_user_language(user_id)
     crypto_assets = ["BTC", "ETH", "USDT"]
     fiat_assets = ["USD", "EUR"]
@@ -1488,6 +1469,14 @@ async def show_market_dashboard(target, user_id, edit=False):
             lines.append(f"• {name}: *{format_price(data['price'])} تومان*")
         else:
             lines.append(f"• {name}: نامشخص")
+
+    # اضافه شدن نفت برنت
+    lines.append("\n🛢️ *نفت برنت*")
+    oil_data = fetch_brent_oil_price()
+    if oil_data:
+        lines.append(f"• نفت برنت: *{format_price(oil_data['price'])} {oil_data.get('currency', 'USD')}*")
+    else:
+        lines.append(f"• نفت برنت: نامشخص")
 
     lines.append("\n🕐 قیمت‌ها هنگام باز کردن/بروزرسانی این صفحه دریافت شده‌اند.")
     text = "\n".join(lines)
@@ -1587,7 +1576,6 @@ async def show_leaderboard(target, user_id, edit=False):
             name = u.get("name", "کاربر")
             count = u.get("invite_count", 0)
             lines.append(f"{medal} {name} → *{count}* دعوت")
-        # اضافه کردن رتبه کاربر
         lines.append("")
         lines.append(t("leaderboard_you", lang, rank=my_rank, count=my_count))
         text = "\n".join(lines)
@@ -1788,7 +1776,6 @@ async def do_convert(target, amount, from_asset, to_asset, user_id=None):
 # ============================================================
 
 async def alert_checker_async():
-    """بررسی هشدارها با یک دریافت قیمت برای هر دارایی، نه یک API call برای هر کاربر."""
     print("🔔 Alert checker started!", flush=True)
     while True:
         try:
@@ -1797,7 +1784,6 @@ async def alert_checker_async():
                 await asyncio.sleep(60)
                 continue
 
-            # هر دارایی فقط یک بار قیمت‌گذاری می‌شود؛ نتیجه بین همه هشدارها مشترک است.
             prices = {}
             for alert in alerts:
                 asset = str(alert.get("asset", "")).upper()
@@ -1842,7 +1828,6 @@ async def alert_checker_async():
                 except Exception as e:
                     print(f"❌ Error sending alert | user={alert.get('chat_id')} | {e}", flush=True)
 
-                # هشدار one-shot است؛ فقط بعد از ارسال موفق حذف می‌شود تا پیام گم نشود.
                 if sent and alerts_collection is not None:
                     try:
                         await alerts_collection.delete_one({"_id": alert["_id"]})
@@ -1857,67 +1842,8 @@ async def alert_checker_async():
 # --- کانال اطلاع‌رسانی ---
 # ============================================================
 
-def build_channel_post():
-    lines = ["📊 **نرخ لحظه‌ای بازار**", "━━━━━━━━━━━━━━━━━━"]
-    lines.append("💵 **ارزهای فیات:**")
-    for sym in ["USD", "EUR", "AED", "TRY"]:
-        try:
-            data = fetch_fiat_data(sym)
-            if data and data.get("price"):
-                name = FIAT_NAMES.get(sym, sym)
-                lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
-        except:
-            pass
-    lines.append("")
-    lines.append("🥇 **طلا و سکه:**")
-    for asset in ["gold_18", "coin_emami", "coin_half"]:
-        try:
-            data = fetch_gold_data(asset)
-            if data and data.get("price"):
-                name = GOLD_NAMES.get(asset, asset)
-                lines.append(f"  • {name}: **{format_price(data['price'])} تومان**")
-        except:
-            pass
-    lines.append("")
-    lines.append("🪙 **رمزارزها:**")
-    for sym in ["BTC", "ETH", "USDT", "BNB", "SOL"]:
-        try:
-            data = fetch_crypto_data(sym)
-            if data and data.get("buy_price"):
-                price_val = data['buy_price']
-                try:
-                    price_num = float(price_val)
-                    if price_num >= 1_000_000_000_000:
-                        formatted = f"{price_num / 1_000_000_000_000:,.2f} همت"
-                    elif price_num >= 1_000_000_000:
-                        formatted = f"{price_num / 1_000_000_000:,.2f} میلیارد"
-                    elif price_num >= 1_000_000:
-                        formatted = f"{price_num / 1_000_000:,.2f} میلیون"
-                    else:
-                        formatted = format_price(price_num)
-                except:
-                    formatted = format_price(price_val)
-                lines.append(f"  • {sym}: **{formatted} تومان**")
-        except:
-            pass
-    lines.append("")
-    lines.append("━━━━━━━━━━━━━━━━━━")
-    # آمار زنده کاربران
-    try:
-        import asyncio as _asyncio
-        # نمي‌توانيم مستقيماً اينجا await کنيم چون thread جداگانه است
-        # پس از يه روش ساده‌تر استفاده مي‌کنيم
-        pass
-    except:
-        pass
-    lines.append(f"🕐 {time.strftime('%Y-%m-%d %H:%M')}")
-    lines.append("")
-    lines.append(f"📢 {CHANNEL_ID}")
-    return "\n".join(lines)
-
-
 def build_channel_post_with_stats(users_count):
-    """نسخه کامل پست کانال با آمار زنده کاربران"""
+    """نسخه کامل پست کانال با آمار زنده کاربران و نفت برنت"""
     lines = ["📊 **نرخ لحظه‌ای بازار**", "━━━━━━━━━━━━━━━━━━"]
     lines.append("💵 **ارزهای فیات:**")
     for sym in ["USD", "EUR", "AED", "TRY"]:
@@ -1960,6 +1886,16 @@ def build_channel_post_with_stats(users_count):
                 lines.append(f"  • {sym}: **{formatted} تومان**")
         except:
             pass
+    
+    # اضافه شدن نفت به کانال
+    lines.append("")
+    lines.append("🛢️ **نفت برنت:**")
+    oil_data = fetch_brent_oil_price()
+    if oil_data:
+        lines.append(f"  • نفت برنت: **{format_price(oil_data['price'])} {oil_data.get('currency', 'USD')}**")
+    else:
+        lines.append(f"  • نفت برنت: **نامشخص**")
+        
     lines.append("")
     lines.append("━━━━━━━━━━━━━━━━━━")
     lines.append(f"👥 **کاربران ربات:** *{users_count:,}* نفر")
@@ -1976,7 +1912,6 @@ def channel_poster():
         try:
             time.sleep(CHANNEL_POST_INTERVAL)
             if CHANNEL_POST_ENABLED and CHANNEL_ID:
-                # گرفتن آمار کاربران از thread اصلی
                 users_count = 0
                 try:
                     if MAIN_LOOP is not None:
@@ -2244,7 +2179,6 @@ async def on_ready():
 
 
 async def wait_for_database_ready(timeout=12):
-    """در زمان Deploy اجازه نمی‌دهد قبل از آماده‌شدن MongoDB کاربر جدید فرض شود."""
     global DB_READY
     if DB_READY and users_collection is not None:
         return True
@@ -2296,8 +2230,6 @@ async def on_message(message: Message):
     text = message.content.strip()
     text_upper = text.upper()
 
-    # بسیار مهم: هنگام Deploy ممکن است on_message قبل از تمام‌شدن اتصال MongoDB اجرا شود.
-    # در این حالت نباید کاربر قدیمی را «کاربر جدید» فرض کنیم و پیام انتخاب زبان بفرستیم.
     if not await wait_for_database_ready(timeout=12):
         await message.reply("⏳ در حال اتصال به پایگاه داده هستیم. لطفاً چند ثانیه دیگر دوباره تلاش کنید.")
         return
@@ -2306,7 +2238,6 @@ async def on_message(message: Message):
         await message.reply(f"🆔 Chat ID شما:\n`{user_id}`\n\nاین شناسه را برای ADMIN_IDS در Render استفاده کن.")
         return
 
-    # 👨‍💻 مدیران قبل از Force Join پردازش می‌شوند.
     if is_admin(user_id):
         if text == "/admin":
             clear_state(user_id)
@@ -2354,22 +2285,15 @@ async def on_message(message: Message):
             await message.reply("\n".join(lines), components=markup)
             return
 
-    # ثبت آخرین فعالیت کاربران ثبت‌نام‌شده. این فیلد به Force Join یا ثبت‌نام جدید وابسته نیست.
     existing_for_activity = await get_active_user(user_id)
     if existing_for_activity:
         await touch_user(user_id)
 
-    # حساب مسدودشده حتی در صورت عضویت کانال نباید از امکانات استفاده کند.
     raw_user_for_block = await get_user(user_id)
     if raw_user_for_block and raw_user_for_block.get("blocked") and not is_admin(user_id):
         await message.reply("🚫 دسترسی این حساب توسط مدیریت محدود شده است.")
         return
 
-    # ============================================================
-    #       بررسی عضویت اجباری (Force Join)
-    # ============================================================
-    # کاربر جدید هم قبل از شروع ثبت‌نام باید عضو کانال باشد.
-    # اگر کاربر در مرحله ثبت‌نام است ولی هنوز عضو نشده، ادامه ثبت‌نام متوقف می‌شود.
     existing_user = await get_active_user(user_id)
     if existing_user:
         is_member = await check_channel_membership(user_id)
@@ -2391,16 +2315,12 @@ async def on_message(message: Message):
                 )
                 return
 
-    # ============================================================
-    #       وضعیت‌های ثبت‌نام / زبان
-    # ============================================================
     if user_id in user_states:
         state = user_states[user_id]["state"]
         data = user_states[user_id].get("data", {})
         lang = data.get("lang", "fa")
 
         if state == "awaiting_channel_join":
-            # هیچ متن مستقیمی نباید ثبت‌نام را جلو ببرد؛ کاربر باید Verify را بزند.
             await message.reply(
                 t("force_join_title", "fa") + "\n\n" +
                 t("force_join_text", "fa", channel=CHANNEL_ID),
@@ -2425,11 +2345,7 @@ async def on_message(message: Message):
             await message.reply(success_text + footer_text(lang), components=main_menu_keyboard(lang))
             return
 
-        # سازگاری با stateهای قدیمی: اگر کاربری به‌دلیل Deploy قبلی در awaiting_phone مانده باشد،
-        # شماره از او نمی‌گیریم؛ متن فعلی را به عنوان نام تلقی می‌کنیم و ثبت‌نام را کامل می‌کنیم.
         if state == "awaiting_phone":
-            # اگر این state از نسخه قدیمی باقی مانده، نام قبلی را حفظ می‌کنیم و
-            # متن جدید (که ممکن است شماره باشد) را به عنوان نام ذخیره نمی‌کنیم.
             legacy_name = data.get("name") or text
             if len(legacy_name.strip()) < 3:
                 await message.reply(t("invalid_name", lang))
@@ -2486,11 +2402,7 @@ async def on_message(message: Message):
                 await message.reply("❌ عدد معتبر وارد کنید." + footer_text(lang))
             return
 
-    # ============================================================
-    #                       دستور /start
-    # ============================================================
     if text.startswith('/start'):
-        # استخراج پارامتر referral
         referred_by = None
         parts = text.split()
         if len(parts) > 1:
@@ -2499,13 +2411,10 @@ async def on_message(message: Message):
                 referred_by = referrer_id
                 print(f"🎁 New user {user_id} referred by {referred_by}", flush=True)
 
-        # مهم: get_user هر دو نوع chat_id (قدیمی عددی و جدید رشته‌ای) را پیدا می‌کند؛
-        # بنابراین کاربران قدیمی بعد از Deploy نباید دوباره ثبت‌نام شوند.
         user = await get_active_user(user_id)
         if user:
             lang = user.get("language", "fa")
             _user_lang_cache[user_id] = lang
-            # چک عضویت
             is_member = await check_channel_membership(user_id)
             if not is_member:
                 await message.reply(
@@ -2515,8 +2424,6 @@ async def on_message(message: Message):
                 return
             await show_main_menu(message, user_id)
         else:
-            # کاربر جدید: اول عضویت کانال، بعد ثبت‌نام.
-            # referred_by را در RAM نگه می‌داریم تا بعد از عضویت و تکمیل ثبت‌نام از بین نرود.
             clear_force_join_cache(user_id)
             is_member = await check_channel_membership(user_id, use_cache=False)
             if not is_member:
@@ -2551,7 +2458,6 @@ async def on_message(message: Message):
     if text == '/language':
         user = await get_user(user_id)
         if not user:
-            # کاربر جدید باید از مسیر /start و عضویت کانال وارد شود.
             user_states[user_id] = {
                 "state": "awaiting_channel_join",
                 "data": user_states.get(user_id, {}).get("data", {})
@@ -2593,690 +2499,4 @@ async def on_message(message: Message):
                 symbols = list(markets_data.keys())
             elif isinstance(markets_data, list):
                 symbols = [item.get("symbol") for item in markets_data if item.get("symbol")]
-            clean_symbols = [s.replace("IRT", "") for s in symbols if "IRT" in s] or symbols
-            chunks = [clean_symbols[i:i + 50] for i in range(0, len(clean_symbols), 50)]
-            await message.reply("📋 **لیست رمزارزها:**\n")
-            for chunk in chunks:
-                await message.reply("، ".join(chunk))
-        except Exception as e:
-            print(f"Error: {e}", flush=True)
-        return
-
-    if text == '/myalerts':
-        if not await has_pro_access(user_id):
-            invite_count = await get_effective_invite_count(user_id)
-            await message.reply(t("pro_locked", lang) + f"\n\n📊 دعوت‌های شما: **{invite_count}** از **{PRO_INVITE_THRESHOLD}**" + footer_text(lang))
-            return
-        await show_my_alerts(message, user_id)
-        return
-    if text == '/fav' or text == '/favorites':
-        await show_favorites(message, user_id)
-        return
-
-    # فرمت هشدار
-    alert_match = re.match(r'^هشدار\s+([A-Za-z_0-9]+)\s+(\d+(?:\.\d+)?)\s+(بالا|پایین|بیشتر|کمتر)$', text, re.IGNORECASE)
-    if alert_match:
-        if not await has_pro_access(user_id):
-            invite_count = await get_effective_invite_count(user_id)
-            await message.reply(t("pro_locked", lang) + f"\n\n📊 دعوت‌های شما: **{invite_count}** از **{PRO_INVITE_THRESHOLD}**" + footer_text(lang))
-            return
-        asset_key = alert_match.group(1)
-        target_price = float(alert_match.group(2))
-        direction_word = alert_match.group(3)
-        direction = "above" if direction_word in ("بالا", "بیشتر") else "below"
-        asset_upper = asset_key.upper()
-        if asset_upper in FIAT_NAMES:
-            asset_key = asset_upper
-        elif asset_key in GOLD_NAMES:
-            pass
-        else:
-            asset_key = asset_upper
-        current = get_current_price(asset_key)
-        if not current:
-            await message.reply(t("not_found", lang) + footer_text(lang))
-            return
-        await add_alert(user_id, asset_key, target_price, direction)
-        asset_name = get_asset_display_name(asset_key)
-        direction_text = "بالا برود" if direction == "above" else "پایین بیاید"
-        await message.reply(
-            f"✅ **هشدار ثبت شد!**\n\n🔔 {asset_name} → {format_price(target_price)} تومان ({direction_text})\n💰 قیمت فعلی: {format_price(current['price'])} تومان" + footer_text(lang),
-            components=main_menu_keyboard(lang)
-        )
-        return
-
-    # فرمت مبدل
-    conv_match = re.match(r'^(\d+(?:\.\d+)?)\s+([A-Za-z_]{2,10})\s+(?:به|to|in)\s+([A-Za-z_]{2,10})$', text, re.IGNORECASE)
-    if conv_match:
-        amount = float(conv_match.group(1))
-        from_asset = conv_match.group(2)
-        to_asset = conv_match.group(3)
-        if from_asset.upper() in ("TOMAN", "IRT", "تومان"):
-            from_asset = "TOMAN"
-        elif from_asset.upper() in FIAT_NAMES:
-            from_asset = from_asset.upper()
-        elif from_asset in GOLD_NAMES:
-            pass
-        else:
-            from_asset = from_asset.upper()
-        if to_asset.upper() in ("TOMAN", "IRT", "تومان"):
-            to_asset = "TOMAN"
-        elif to_asset.upper() in FIAT_NAMES:
-            to_asset = to_asset.upper()
-        elif to_asset in GOLD_NAMES:
-            pass
-        else:
-            to_asset = to_asset.upper()
-        await do_convert(message, amount, from_asset, to_asset, user_id)
-        return
-
-    if text_upper in FIAT_NAMES:
-        await process_fiat_and_reply(message, text_upper, user_id)
-        return
-
-    user = await get_user(user_id)
-    if not user:
-        user_states[user_id] = {"state": "awaiting_language", "data": {}}
-        await message.reply(t("choose_language", "fa"), components=language_keyboard())
-        return
-
-    await process_crypto_and_reply(message, text_upper, user_id)
-
-
-# ============================================================
-#     رویداد کلیک روی دکمه‌ها
-# ============================================================
-@bot.event
-async def on_callback(callback: CallbackQuery):
-    data = callback.data
-    user_id = get_user_id_from_callback(callback)
-    if not user_id:
-        return
-
-    try:
-        if hasattr(callback, 'message') and callback.message:
-            if hasattr(callback.message, 'chat') and callback.message.chat:
-                chat_type = getattr(callback.message.chat, 'type', None)
-                if chat_type != 'private':
-                    return
-    except:
-        return
-
-    # ============================================================
-    # 👨‍💻 پنل مدیریت - فقط برای ADMIN_IDS
-    # ============================================================
-    if is_admin(user_id) and data.startswith("ADMIN:"):
-        try:
-            if data == "ADMIN:HOME":
-                clear_state(user_id)
-                await callback.message.edit(await admin_stats_text(), components=admin_keyboard())
-                return
-
-            if data == "ADMIN:STATS":
-                await callback.message.edit(await admin_stats_text(), components=admin_keyboard())
-                return
-
-            if data.startswith("ADMIN:USERS:"):
-                page = int(data.split(":")[2])
-                text, markup = await admin_users_page(page)
-                await callback.message.edit(text, components=markup)
-                return
-
-            if data.startswith("ADMIN:USER:"):
-                uid = data.split(":", 2)[2]
-                text, markup = await admin_user_detail(uid)
-                await callback.message.edit(text, components=markup)
-                return
-
-            if data.startswith("ADMIN:BLOCK:") or data.startswith("ADMIN:UNBLOCK:"):
-                parts = data.split(":", 2)
-                uid = parts[2]
-                blocked = parts[1] == "BLOCK"
-                ok = await set_user_blocked(uid, blocked)
-                if ok:
-                    text, markup = await admin_user_detail(uid)
-                    await callback.message.edit(text, components=markup)
-                else:
-                    await callback.message.reply("❌ تغییر وضعیت کاربر انجام نشد.", components=admin_back_keyboard())
-                return
-
-            if data == "ADMIN:SEARCH":
-                user_states[user_id] = {"state": "admin_search_waiting", "data": {}}
-                await callback.message.reply("🔎 **جستجوی کاربر**\n\nنام یا Chat ID کاربر را ارسال کن:")
-                return
-
-            if data == "ADMIN:BROADCAST":
-                user_states[user_id] = {"state": "admin_broadcast_waiting", "data": {}}
-                await callback.message.reply("📢 **ارسال پیام همگانی**\n\nمتن پیامی که می‌خواهی برای تمام کاربران ثبت‌نام‌شده ارسال شود را در یک پیام بفرست:")
-                return
-
-            if data == "ADMIN:BROADCAST:CONFIRM":
-                state = user_states.get(user_id, {})
-                broadcast_text = state.get("data", {}).get("text")
-                if not broadcast_text:
-                    await callback.message.reply("❌ پیام برای ارسال پیدا نشد.", components=admin_keyboard())
-                    clear_state(user_id)
-                    return
-                clear_state(user_id)
-                await callback.message.edit("⏳ **در حال ارسال پیام همگانی...**")
-                sent, failed = await admin_broadcast(user_id, broadcast_text)
-                await callback.message.reply(
-                    f"✅ **ارسال همگانی تمام شد.**\n\n📨 موفق: **{sent:,}**\n❌ ناموفق: **{failed:,}**",
-                    components=admin_keyboard()
-                )
-                return
-
-            if data == "ADMIN:SPECIAL":
-                text, markup = await admin_special_users_text()
-                await callback.message.edit(text, components=markup)
-                return
-
-            if data.startswith("ADMIN:SPECIAL:") or data.startswith("ADMIN:UNSPECIAL:"):
-                parts = data.split(":", 2)
-                uid = parts[2]
-                special = parts[1] == "SPECIAL"
-                ok = await set_special_user(uid, special)
-                if ok:
-                    text, markup = await admin_user_detail(uid)
-                    await callback.message.edit(text, components=markup)
-                else:
-                    await callback.message.reply("❌ تغییر وضعیت کاربر انجام نشد.", components=admin_back_keyboard())
-                return
-
-            if data == "ADMIN:ALERTS":
-                await callback.message.edit(await admin_alerts_text(), components=admin_back_keyboard())
-                return
-
-            if data == "ADMIN:FAVS":
-                count = await favorites_collection.count_documents({}) if favorites_collection is not None else 0
-                await callback.message.edit(
-                    f"⭐ **آمار علاقه‌مندی‌ها**\n\nتعداد کل آیتم‌های ذخیره‌شده: **{count:,}**",
-                    components=admin_back_keyboard()
-                )
-                return
-
-            if data == "ADMIN:HEALTH":
-                await callback.message.edit(await admin_health_text(), components=admin_back_keyboard())
-                return
-        except Exception as admin_error:
-            print(f"❌ Admin callback error: {admin_error}", flush=True)
-            try:
-                await callback.message.reply("❌ خطایی در پنل مدیریت رخ داد.", components=admin_keyboard())
-            except:
-                pass
-            return
-
-    # ============================================================
-    # خروج از حساب
-    # ============================================================
-    if data == "PROFILE:LOGOUT":
-        user = await get_active_user(user_id)
-        lang = user.get("language", "fa") if user else "fa"
-        try:
-            await callback.message.edit(t("logout_confirm", lang), components=logout_confirm_keyboard(lang))
-        except:
-            await callback.message.reply(t("logout_confirm", lang), components=logout_confirm_keyboard(lang))
-        return
-
-    if data == "PROFILE:LOGOUT:CONFIRM":
-        user = await get_active_user(user_id)
-        lang = user.get("language", "fa") if user else "fa"
-        ok = await logout_user(user_id)
-        if ok:
-            await callback.message.edit(t("logout_done", lang))
-        else:
-            await callback.message.reply(t("error", lang))
-        return
-
-    raw_callback_user = await get_user(user_id)
-    if raw_callback_user and raw_callback_user.get("blocked") and not is_admin(user_id):
-        await callback.message.reply("🚫 دسترسی این حساب توسط مدیریت محدود شده است.")
-        return
-
-    # ============================================================
-    # Force Join باید قبل از هر Callback مربوط به ثبت‌نام اجرا شود.
-    # این ترتیب جلوی دور زدن عضویت با کلیک روی LANG را می‌گیرد.
-    # ============================================================
-    if data == "FORCEJOIN:VERIFY":
-        clear_force_join_cache(user_id)
-        user = await get_active_user(user_id)
-        pending = user_states.get(user_id, {})
-        pending_data = pending.get("data", {})
-
-        is_member = await check_channel_membership(user_id, use_cache=False)
-        if not is_member:
-            lang = user.get("language", "fa") if user else "fa"
-            try:
-                await callback.message.edit(
-                    t("force_join_not_member", lang),
-                    components=force_join_keyboard(lang)
-                )
-            except:
-                await callback.message.reply(
-                    t("force_join_not_member", lang),
-                    components=force_join_keyboard(lang)
-                )
-            return
-
-        # کاربر جدیدی که هنوز در users نیست: بعد از تأیید عضویت وارد ثبت‌نام می‌شود.
-        if not user:
-            referred_by = pending_data.get("referred_by")
-            user_states[user_id] = {
-                "state": "awaiting_language",
-                "data": {"referred_by": referred_by}
-            }
-            try:
-                await callback.message.edit(
-                    t("choose_language", "fa"),
-                    components=language_keyboard()
-                )
-            except:
-                await callback.message.reply(
-                    t("choose_language", "fa"),
-                    components=language_keyboard()
-                )
-            return
-
-        # کاربر قدیمی: بعد از تأیید عضویت مستقیم وارد منوی اصلی می‌شود.
-        clear_state(user_id)
-        await show_main_menu(callback.message, user_id, edit=True)
-        return
-
-    # ============================================================
-    # محافظت از تمام Callbackها برای کاربران ثبت‌نام‌شده
-    # اگر کاربر بعداً از کانال خارج شده باشد، حتی با دکمه‌های قدیمی
-    # هم نباید بتواند از قابلیت‌های ربات استفاده کند.
-    # ============================================================
-    existing_user = await get_user(user_id)
-    if existing_user:
-        is_member = await check_channel_membership(user_id)
-        if not is_member:
-            lang = existing_user.get("language", "fa")
-            try:
-                await callback.message.edit(
-                    t("force_join_title", lang) + "\n\n" +
-                    t("force_join_text", lang, channel=CHANNEL_ID),
-                    components=force_join_keyboard(lang)
-                )
-            except:
-                try:
-                    await callback.message.reply(
-                        t("force_join_title", lang) + "\n\n" +
-                        t("force_join_text", lang, channel=CHANNEL_ID),
-                        components=force_join_keyboard(lang)
-                    )
-                except:
-                    pass
-            return
-
-    # کاربر جدیدی که هنوز عضو نشده، حق عبور از مرحله Force Join را ندارد.
-    user = existing_user
-    if not user and data.startswith("LANG:"):
-        pending = user_states.get(user_id, {})
-        if pending.get("state") != "awaiting_language":
-            try:
-                await callback.message.edit(
-                    t("force_join_title", "fa") + "\n\n" +
-                    t("force_join_text", "fa", channel=CHANNEL_ID),
-                    components=force_join_keyboard("fa")
-                )
-            except:
-                pass
-            return
-
-    # انتخاب / تغییر زبان
-    if data.startswith("LANG:"):
-        new_lang = data.split(":")[1]
-        if new_lang not in ["fa", "en"]:
-            new_lang = "fa"
-
-        if user_id in user_states and user_states[user_id]["state"] == "changing_language":
-            user = await get_user(user_id)
-            if user:
-                await create_user(user_id, user.get("name", ""), user.get("phone", ""), new_lang)
-                clear_lang_cache(user_id)
-                clear_state(user_id)
-                await show_main_menu(callback.message, user_id, edit=True)
-                return
-
-        # کاربر جدید در حال ثبت‌نام - حفظ referred_by
-        current_data = user_states.get(user_id, {}).get("data", {})
-        referred_by = current_data.get("referred_by")
-        user_states[user_id] = {"state": "awaiting_name", "data": {"lang": new_lang, "referred_by": referred_by}}
-        try:
-            await callback.message.edit(t("welcome_new", new_lang))
-        except:
-            await callback.message.reply(t("welcome_new", new_lang))
-        return
-
-    user = await get_user(user_id)
-    if not user:
-        try:
-            await callback.message.reply(t("choose_language", "fa"), components=language_keyboard())
-        except:
-            pass
-        return
-
-    lang = await get_user_language(user_id)
-
-    # 🔒 قابلیت‌های حرفه‌ای: افراد خاص همیشه دسترسی دارند؛ بقیه با ۵ دعوت یا بیشتر.
-    if data in {"MENU:MYALERTS", "ALERT:NEW"} or data.startswith("ALERT:"):
-        if not await has_pro_access(user_id):
-            invite_count = await get_effective_invite_count(user_id)
-            await callback.message.reply(
-                t("pro_locked", lang) + f"\n\n📊 دعوت‌های شما: **{invite_count}** از **{PRO_INVITE_THRESHOLD}**" + footer_text(lang),
-                components=main_menu_keyboard(lang)
-            )
-            return
-
-    if data == "MENU:MAIN":
-        clear_state(user_id)
-        await show_main_menu(callback.message, user_id, edit=True)
-        return
-
-    if data == "MENU:HELP":
-        await show_help(callback.message, user_id, edit=True)
-        return
-
-    if data == "MENU:PROFILE":
-        await show_profile(callback.message, user_id, edit=True)
-        return
-
-    if data == "MENU:INVITE":
-        await show_invite(callback.message, user_id, edit=True)
-        return
-
-    if data == "MENU:LEADERBOARD":
-        await show_leaderboard(callback.message, user_id, edit=True)
-        return
-
-    if data == "INVITE:COPY":
-        invite_link = f"https://ble.ir/{BOT_USERNAME}?start={user_id}"
-        await callback.message.reply(
-            f"📋 لینک دعوت شما:\n`{invite_link}`\n\n"
-            "روی متن بالا کلیک کنید تا کپی شود." + footer_text(lang)
-        )
-        return
-
-    if data == "MENU:LANG":
-        user_states[user_id] = {"state": "changing_language", "data": {}}
-        try:
-            await callback.message.edit(t("choose_language", lang), components=language_keyboard())
-        except:
-            await callback.message.reply(t("choose_language", lang), components=language_keyboard())
-        return
-
-    if data == "MENU:MARKET" or data == "MARKET:REFRESH":
-        clear_state(user_id)
-        await show_market_dashboard(callback.message, user_id, edit=True)
-        return
-
-    if data == "MENU:CRYPTO":
-        clear_state(user_id)
-        try:
-            await callback.message.edit(t("crypto_title", lang) + footer_text(lang), components=crypto_menu_keyboard(lang))
-        except:
-            await callback.message.reply(t("crypto_title", lang) + footer_text(lang), components=crypto_menu_keyboard(lang))
-        return
-
-    if data == "MENU:FIAT":
-        clear_state(user_id)
-        try:
-            await callback.message.edit(t("fiat_title", lang) + footer_text(lang), components=fiat_menu_keyboard(lang))
-        except:
-            await callback.message.reply(t("fiat_title", lang) + footer_text(lang), components=fiat_menu_keyboard(lang))
-        return
-
-    if data == "MENU:GOLD":
-        clear_state(user_id)
-        try:
-            await callback.message.edit(t("gold_title", lang) + footer_text(lang), components=gold_menu_keyboard(lang))
-        except:
-            await callback.message.reply(t("gold_title", lang) + footer_text(lang), components=gold_menu_keyboard(lang))
-        return
-
-    if data == "MENU:MYALERTS":
-        await show_my_alerts(callback.message, user_id, edit=True)
-        return
-
-    if data == "MENU:LIST":
-        try:
-            response = requests.get(CRYPTO_API_URL, timeout=20)
-            markets_data = response.json().get("data", {}).get("markets", {})
-            symbols = []
-            if isinstance(markets_data, dict):
-                symbols = list(markets_data.keys())
-            elif isinstance(markets_data, list):
-                symbols = [item.get("symbol") for item in markets_data if item.get("symbol")]
-            clean_symbols = [s.replace("IRT", "") for s in symbols if "IRT" in s] or symbols
-            chunks = [clean_symbols[i:i + 50] for i in range(0, len(clean_symbols), 50)]
-            await callback.message.reply("📋 **لیست:**\n")
-            for chunk in chunks:
-                await callback.message.reply("، ".join(chunk))
-            markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=0)
-            await callback.message.reply("🔙", components=markup)
-        except Exception as e:
-            print(f"Error: {e}", flush=True)
-        return
-
-    if data.startswith("CRYPTO:"):
-        parts = data.split(":")
-        if len(parts) >= 2:
-            await process_crypto_and_reply(callback.message, parts[1], user_id)
-        return
-
-    if data.startswith("FIAT:"):
-        parts = data.split(":")
-        if len(parts) >= 2:
-            await process_fiat_and_reply(callback.message, parts[1], user_id)
-        return
-
-    if data.startswith("GOLD:"):
-        parts = data.split(":")
-        if len(parts) >= 2:
-            await process_gold_and_reply(callback.message, parts[1], user_id)
-        return
-
-    if data == "FAV:VIEW":
-        clear_state(user_id)
-        await show_favorites(callback.message, user_id, edit=True)
-        return
-
-    if data == "FAV:NEW":
-        clear_state(user_id)
-        try:
-            await callback.message.edit("⭐ **افزودن**\n\nکدام دسته؟" + footer_text(lang), components=fav_category_keyboard(lang))
-        except:
-            await callback.message.reply("⭐ **افزودن**\n\nکدام دسته؟" + footer_text(lang), components=fav_category_keyboard(lang))
-        return
-
-    if data.startswith("FAV:CAT:"):
-        parts = data.split(":")
-        category = parts[2] if len(parts) >= 3 else None
-        if not category:
-            return
-        user_favs = await get_user_favorites(user_id)
-        try:
-            await callback.message.edit("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
-        except:
-            await callback.message.reply("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
-        return
-
-    if data.startswith("FAV:ADD:"):
-        parts = data.split(":")
-        asset = parts[2] if len(parts) >= 3 else None
-        if not asset:
-            return
-        added = await add_favorite(user_id, asset)
-        asset_name = get_asset_display_name(asset)
-        await callback.message.reply(f"{'✅' if added else 'ℹ️'} **{asset_name}** {'اضافه شد!' if added else 'قبلاً بود.'}" + footer_text(lang))
-        category = "crypto" if asset in POPULAR_CRYPTOS else "fiat" if asset in POPULAR_FIATS else "gold"
-        user_favs = await get_user_favorites(user_id)
-        try:
-            await callback.message.edit("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
-        except:
-            pass
-        return
-
-    if data.startswith("FAV:DEL:"):
-        parts = data.split(":")
-        asset = parts[2] if len(parts) >= 3 else None
-        if not asset:
-            return
-        await remove_favorite(user_id, asset)
-        asset_name = get_asset_display_name(asset)
-        await callback.message.reply(f"🗑 **{asset_name}** حذف شد." + footer_text(lang))
-        category = "crypto" if asset in POPULAR_CRYPTOS else "fiat" if asset in POPULAR_FIATS else "gold"
-        user_favs = await get_user_favorites(user_id)
-        try:
-            await callback.message.edit("⭐ **انتخاب دارایی:**" + footer_text(lang), components=fav_asset_list_keyboard(category, user_favs, lang))
-        except:
-            pass
-        return
-
-    if data.startswith("DELALERT:"):
-        parts = data.split(":")
-        if len(parts) >= 2:
-            asset = parts[1]
-            if asset == "ALL":
-                count = await remove_all_user_alerts(user_id)
-                await callback.message.reply(f"🗑 **{count} هشدار حذف شد.**" + footer_text(lang))
-                await show_my_alerts(callback.message, user_id, edit=False)
-            else:
-                await remove_alert(user_id, asset)
-                await callback.message.reply(f"🗑 هشدار **{get_asset_display_name(asset)}** حذف شد." + footer_text(lang))
-                await show_my_alerts(callback.message, user_id, edit=False)
-        return
-
-    if data == "ALERT:NEW":
-        clear_state(user_id)
-        try:
-            await callback.message.edit("🔔 **ثبت هشدار**\n\nدسته‌بندی:" + footer_text(lang), components=alert_asset_category_keyboard(lang))
-        except:
-            await callback.message.reply("🔔 **ثبت هشدار**\n\nدسته‌بندی:" + footer_text(lang), components=alert_asset_category_keyboard(lang))
-        return
-
-    if data.startswith("ALERT:CAT:"):
-        parts = data.split(":")
-        category = parts[2] if len(parts) >= 3 else None
-        if not category:
-            return
-        try:
-            await callback.message.edit("🔔 **انتخاب دارایی:**", components=alert_asset_list_keyboard(category, lang))
-        except:
-            await callback.message.reply("🔔 **انتخاب دارایی:**", components=alert_asset_list_keyboard(category, lang))
-        return
-
-    if data == "ALERT:MANUAL":
-        user_states[user_id] = {"state": "alert_awaiting_manual_asset", "data": {"lang": lang}}
-        await callback.message.reply("✏️ **نام دارایی را وارد کنید:**\n\n🔸 `BTC`\n🔸 `USD`\n🔸 `coin_emami`" + footer_text(lang))
-        return
-
-    if data.startswith("ALERT:SET:"):
-        parts = data.split(":")
-        asset = parts[2] if len(parts) >= 3 else None
-        if not asset:
-            return
-        user_states[user_id] = {"state": "alert_awaiting_price", "data": {"asset": asset, "lang": lang}}
-        current = get_current_price(asset)
-        current_text = f"\n💰 قیمت فعلی: {format_price(current['price'])} تومان" if current else ""
-        try:
-            await callback.message.edit(f"✅ **{get_asset_display_name(asset)}**{current_text}\n\n🎯 قیمت هدف را وارد کنید:" + footer_text(lang))
-        except:
-            await callback.message.reply(f"✅ **{get_asset_display_name(asset)}**{current_text}\n\n🎯 قیمت هدف را وارد کنید:" + footer_text(lang))
-        return
-
-    if data.startswith("ALERT:DIR:"):
-        parts = data.split(":")
-        direction = parts[2] if len(parts) >= 3 else None
-        if not direction:
-            return
-        if user_id not in user_states or "asset" not in user_states[user_id]["data"] or "target_price" not in user_states[user_id]["data"]:
-            await callback.message.reply("❌ خطا. دوباره شروع کنید.", components=main_menu_keyboard(lang))
-            return
-        asset = user_states[user_id]["data"]["asset"]
-        target_price = user_states[user_id]["data"]["target_price"]
-        current = get_current_price(asset)
-        if not current or current.get("price") is None:
-            await callback.message.reply("❌ در حال حاضر قیمت این دارایی در دسترس نیست. لطفاً کمی بعد دوباره تلاش کنید." + footer_text(lang))
-            return
-        ok = await add_alert(user_id, asset, target_price, direction)
-        if not ok:
-            await callback.message.reply("❌ ثبت هشدار انجام نشد. دوباره تلاش کنید." + footer_text(lang))
-            return
-        clear_state(user_id)
-        direction_text = "بالا برود 📈" if direction == "above" else "پایین بیاید 📉"
-        text = (
-            f"✅ **هشدار ثبت شد!**\n━━━━━━━━━━━━━━━━━━\n🔔 **{get_asset_display_name(asset)}**\n"
-            f"🎯 قیمت هدف: **{format_price(target_price)} تومان**\n"
-            f"📊 {direction_text}\n━━━━━━━━━━━━━━━━━━" + footer_text(lang)
-        )
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton(text=t("menu_alert", lang), callback_data="ALERT:NEW"), row=0)
-        markup.add(InlineKeyboardButton(text=t("menu_myalerts", lang), callback_data="MENU:MYALERTS"), row=1)
-        markup.add(InlineKeyboardButton(text=t("menu_main", lang), callback_data="MENU:MAIN"), row=2)
-        try:
-            await callback.message.edit(text, components=markup)
-        except:
-            await callback.message.reply(text, components=markup)
-        return
-
-    if data == "ALERT:CANCEL":
-        clear_state(user_id)
-        await callback.message.reply(t("cancel", lang), components=main_menu_keyboard(lang))
-        return
-
-    if data == "CONV:NEW":
-        clear_state(user_id)
-        try:
-            await callback.message.edit("🔄 **مبدل ارز**\n\nمرحله ۱: **ارز مبدأ؟**" + footer_text(lang), components=convert_from_keyboard(lang))
-        except:
-            await callback.message.reply("🔄 **مبدل ارز**\n\nمرحله ۱: **ارز مبدأ؟**" + footer_text(lang), components=convert_from_keyboard(lang))
-        return
-
-    if data.startswith("CONV:FROM:"):
-        parts = data.split(":")
-        from_asset = parts[2] if len(parts) >= 3 else None
-        if not from_asset:
-            return
-        user_states[user_id] = {"state": "convert_awaiting_amount", "data": {"from_asset": from_asset, "lang": lang}}
-        try:
-            await callback.message.edit(f"✅ **{get_asset_display_name(from_asset)}**\n\nمرحله ۲: **مقدار؟**" + footer_text(lang))
-        except:
-            await callback.message.reply(f"✅ **{get_asset_display_name(from_asset)}**\n\nمرحله ۲: **مقدار؟**" + footer_text(lang))
-        return
-
-    if data.startswith("CONV:TO:"):
-        parts = data.split(":")
-        to_asset = parts[2] if len(parts) >= 3 else None
-        if not to_asset:
-            return
-        if user_id not in user_states or "from_asset" not in user_states[user_id]["data"] or "amount" not in user_states[user_id]["data"]:
-            await callback.message.reply("❌ خطا. دوباره شروع کنید.", components=main_menu_keyboard(lang))
-            return
-        from_asset = user_states[user_id]["data"]["from_asset"]
-        amount = user_states[user_id]["data"]["amount"]
-        clear_state(user_id)
-        await do_convert(callback.message, amount, from_asset, to_asset, user_id)
-        return
-
-    if data == "CONV:CANCEL":
-        clear_state(user_id)
-        await callback.message.reply(t("cancel", lang), components=main_menu_keyboard(lang))
-        return
-
-
-# --- سرور وب ---
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot is running!"
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
-
-threading.Thread(target=run_web_server, daemon=True).start()
-
-bot.run()
+            clean_symbol
