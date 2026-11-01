@@ -5,3 +5,4 @@ motor
 pymongo
 certifi
 oilpriceapi
+feedparser
