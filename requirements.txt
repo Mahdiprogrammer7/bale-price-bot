@@ -5,4 +5,4 @@ motor
 pymongo
 certifi
 oilpriceapi
-feedparser
+google-genai
