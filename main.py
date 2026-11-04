@@ -11,6 +11,7 @@ from bale import Bot, Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboa
 import requests
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.server_api import ServerApi
+from ai_chat import GeminiChat, daily_usage_text
 
 # ==================== تنظیمات ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
@@ -242,11 +243,12 @@ alerts_collection = None
 favorites_collection = None
 users_collection = None
 referrals_collection = None
+ai_usage_collection = None
 DB_READY = False
 
 
 async def init_db():
-    global db_client, alerts_collection, favorites_collection, users_collection, referrals_collection, DB_READY
+    global db_client, alerts_collection, favorites_collection, users_collection, referrals_collection, ai_usage_collection, DB_READY
     DB_READY = False
     if not MONGO_URI:
         return False
@@ -258,6 +260,8 @@ async def init_db():
         favorites_collection = db["favorites"]
         users_collection = db["users"]
         referrals_collection = db["referrals"]
+        ai_usage_collection = db["ai_usage"]
+        await ai_usage_collection.create_index([("chat_id", 1), ("day", 1)], unique=True, name="ai_usage_chat_day_unique")
 
         async def ensure_index(collection, keys, *, unique=False, name=None):
             """Index را بدون ایجاد conflict با Indexهای قدیمی بررسی/ایجاد می‌کند."""
@@ -1193,6 +1197,7 @@ def main_menu_keyboard(lang="fa"):
     markup.add(InlineKeyboardButton(text=t("menu_gold", lang), callback_data="MENU:GOLD"), row=1)
     markup.add(InlineKeyboardButton(text=t("menu_convert", lang), callback_data="CONV:NEW"), row=1)
     markup.add(InlineKeyboardButton(text=t("menu_market", lang), callback_data="MENU:MARKET"), row=2)
+    markup.add(InlineKeyboardButton(text="🤖 هوش مصنوعی" if lang == "fa" else "🤖 AI Assistant", callback_data="AI:OPEN"), row=2)
     markup.add(InlineKeyboardButton(text=t("menu_fav", lang), callback_data="FAV:VIEW"), row=3)
     markup.add(InlineKeyboardButton(text=t("menu_alert", lang), callback_data="ALERT:NEW"), row=3)
     markup.add(InlineKeyboardButton(text=t("menu_myalerts", lang), callback_data="MENU:MYALERTS"), row=4)
@@ -2391,6 +2396,30 @@ async def on_message(message: Message):
                 )
                 return
 
+    # ==================== گفت‌وگوی هوش مصنوعی ====================
+    if user_states.get(user_id, {}).get("state") == "ai_chat":
+        if text in {"/cancel", "لغو", "بازگشت", "🔙 بازگشت", "🏠 منوی اصلی"}:
+            clear_state(user_id)
+            await show_main_menu(message, user_id)
+            return
+        if ai_usage_collection is None:
+            await message.reply("❌ دیتابیس سهمیه هوش مصنوعی در دسترس نیست. کمی بعد تلاش کنید.")
+            return
+        user = await get_user(user_id)
+        special = bool(user and user.get("special_user") is True)
+        try:
+            allowed, remaining = await GeminiChat.reserve_question(ai_usage_collection, user_id, special)
+            if not allowed:
+                await message.reply("⛔ سهمیه امروز شما تمام شده است (۱۵ سؤال). فردا دوباره می‌توانید استفاده کنید.\n\n🏠 برای خروج از چت: «بازگشت»")
+                return
+            answer = await GeminiChat.ask(user_id, text)
+            suffix = "\n\n♾️ کاربر خاص | سهمیه نامحدود" if special else f"\n\n📊 سهمیه امروز: {remaining} سؤال باقی مانده"
+            await message.reply(answer + suffix)
+        except Exception as ai_error:
+            print(f"❌ AI chat error: {ai_error}", flush=True)
+            await message.reply("⚠️ ارتباط با Gemini موقتاً برقرار نشد. لطفاً دوباره سؤال را ارسال کنید.")
+        return
+
     # ============================================================
     #       وضعیت‌های ثبت‌نام / زبان
     # ============================================================
@@ -2967,6 +2996,19 @@ async def on_callback(callback: CallbackQuery):
                 components=main_menu_keyboard(lang)
             )
             return
+
+    if data == "AI:OPEN":
+        clear_state(user_id)
+        user_states[user_id] = {"state": "ai_chat", "data": {}}
+        remaining = await daily_usage_text(ai_usage_collection, user_id, bool((await get_user(user_id) or {}).get("special_user")))
+        intro = ("🤖 **چت هوش مصنوعی ارز آنلاین**\n\nسؤالت را ارسال کن تا Gemini پاسخ دهد.\n\n"
+                 "👤 کاربران عادی: روزانه ۱۵ سؤال\n⭐ کاربران خاص: نامحدود\n\n"
+                 f"{remaining}\n\nبرای برگشت، «بازگشت» را بفرست.")
+        try:
+            await callback.message.edit(intro)
+        except:
+            await callback.message.reply(intro)
+        return
 
     if data == "MENU:MAIN":
         clear_state(user_id)
