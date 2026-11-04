@@ -2416,8 +2416,11 @@ async def on_message(message: Message):
             suffix = "\n\n♾️ کاربر خاص | سهمیه نامحدود" if special else f"\n\n📊 سهمیه امروز: {remaining} سؤال باقی مانده"
             await message.reply(answer + suffix)
         except Exception as ai_error:
-            print(f"❌ AI chat error: {ai_error}", flush=True)
-            await message.reply("⚠️ ارتباط با Gemini موقتاً برقرار نشد. لطفاً دوباره سؤال را ارسال کنید.")
+            # اگر درخواست Gemini شکست خورد، سؤال برای کاربر عادی به سهمیه برگردد.
+            if not special:
+                await GeminiChat.refund_question(ai_usage_collection, user_id)
+            print(f"❌ AI chat error: {type(ai_error).__name__}: {ai_error}", flush=True)
+            await message.reply("⚠️ ارتباط با Gemini برقرار نشد؛ سهمیه این سؤال مصرف نشد. لطفاً کمی بعد دوباره تلاش کن.")
         return
 
     # ============================================================
