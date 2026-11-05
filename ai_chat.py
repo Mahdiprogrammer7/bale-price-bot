@@ -1,27 +1,29 @@
 
 import os
 import asyncio
+import json
 import logging
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone, timedelta
 
-from google import genai
-from google.genai import types
-
 # =========================================================
-# تنظیمات Gemini
+# تنظیمات OpenRouter
 # =========================================================
 
-API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 
 PRIMARY_MODEL = os.getenv(
-    "GEMINI_MODEL",
-    "gemini-3.8-flash"
+    "OPENROUTER_MODEL",
+    "openai/gpt-oss-20b:free"
 ).strip()
 
 FALLBACK_MODEL = os.getenv(
-    "GEMINI_FALLBACK_MODEL",
-    "gemini-2.5-flash"
+    "OPENROUTER_FALLBACK_MODEL",
+    "meta-llama/llama-3.3-70b-instruct:free"
 ).strip()
+
+API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 MAX_DAILY_QUESTIONS = 15
 TEHRAN_TZ = timezone(timedelta(hours=3, minutes=30))
@@ -37,30 +39,26 @@ SYSTEM_INSTRUCTION = """
 - از پاسخ‌های بی‌ربط و طولانی خودداری کن.
 """
 
-client = None
+# =========================================================
+# وضعیت اولیه
+# =========================================================
 
 if API_KEY:
-    try:
-        client = genai.Client(api_key=API_KEY)
-        print(
-            f"✅ Gemini client initialized | "
-            f"model={PRIMARY_MODEL} | key_present=True",
-            flush=True
-        )
-    except Exception as exc:
-        print(f"❌ Gemini initialization error: {exc}", flush=True)
+    print(
+        f"✅ OpenRouter client ready | model={PRIMARY_MODEL}",
+        flush=True
+    )
 else:
-    print("❌ GEMINI_API_KEY is missing!", flush=True)
+    print("❌ OPENROUTER_API_KEY is missing!", flush=True)
 
 
 # =========================================================
 # کلاس هوش مصنوعی
-# سازگار با main.py فعلی
+# نام GeminiChat برای سازگاری main.py حفظ شده
 # =========================================================
 
 class GeminiChat:
 
-    # تاریخچه مکالمات در حافظه
     _histories = {}
 
     # -----------------------------------------------------
@@ -78,13 +76,11 @@ class GeminiChat:
     @staticmethod
     async def reserve_question(collection, chat_id, special=False):
 
-        # کاربران خاص نامحدود هستند
         if special:
             return True, None
 
         today = GeminiChat.today_tehran()
 
-        # ایجاد رکورد اولیه در صورت نبود
         await collection.update_one(
             {
                 "chat_id": chat_id,
@@ -100,7 +96,6 @@ class GeminiChat:
             upsert=True
         )
 
-        # افزایش شمارنده در صورتی که هنوز سهمیه دارند
         result = await collection.find_one_and_update(
             {
                 "chat_id": chat_id,
@@ -159,11 +154,98 @@ class GeminiChat:
         return record.get("count", 0) if record else 0
 
     # -----------------------------------------------------
-    # درخواست Gemini با Retry
+    # ارسال درخواست به OpenRouter
     # -----------------------------------------------------
 
     @staticmethod
-    async def _generate_with_retry(model, contents):
+    def _request_openrouter(model, messages):
+
+        if not API_KEY:
+            raise RuntimeError("OPENROUTER_API_KEY is missing")
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 2048
+        }
+
+        body = json.dumps(payload).encode("utf-8")
+
+        request = urllib.request.Request(
+            API_URL,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://arz-online.onrender.com",
+                "X-Title": "Arz Online"
+            },
+            method="POST"
+        )
+
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=90
+            ) as response:
+
+                raw = response.read().decode("utf-8")
+                data = json.loads(raw)
+
+        except urllib.error.HTTPError as exc:
+
+            error_body = exc.read().decode(
+                "utf-8",
+                errors="replace"
+            )
+
+            raise RuntimeError(
+                f"OpenRouter HTTP {exc.code}: {error_body}"
+            ) from exc
+
+        except urllib.error.URLError as exc:
+
+            raise RuntimeError(
+                f"OpenRouter connection error: {exc}"
+            ) from exc
+
+        choices = data.get("choices", [])
+
+        if not choices:
+            raise RuntimeError(
+                f"OpenRouter returned no choices: {data}"
+            )
+
+        message = choices[0].get("message", {})
+        content = message.get("content")
+
+        if isinstance(content, str):
+            answer = content.strip()
+
+        elif isinstance(content, list):
+            answer = "".join(
+                item.get("text", "")
+                for item in content
+                if isinstance(item, dict)
+            ).strip()
+
+        else:
+            answer = ""
+
+        if not answer:
+            raise RuntimeError(
+                "OpenRouter returned an empty response"
+            )
+
+        return answer
+
+    # -----------------------------------------------------
+    # درخواست با Retry
+    # -----------------------------------------------------
+
+    @staticmethod
+    async def _generate_with_retry(model, messages):
 
         delays = [2, 4, 8]
         last_error = None
@@ -171,23 +253,14 @@ class GeminiChat:
         for attempt in range(4):
 
             try:
-                response = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model=model,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_INSTRUCTION,
-                        temperature=0.7,
-                        max_output_tokens=2048
-                    )
+
+                answer = await asyncio.to_thread(
+                    GeminiChat._request_openrouter,
+                    model,
+                    messages
                 )
 
-                if not response or not response.text:
-                    raise RuntimeError(
-                        "Gemini returned an empty response"
-                    )
-
-                return response.text.strip()
+                return answer
 
             except Exception as exc:
 
@@ -197,14 +270,15 @@ class GeminiChat:
                 retryable = any(
                     item in error_text
                     for item in (
-                        "503",
-                        "unavailable",
                         "429",
-                        "resource_exhausted",
                         "500",
-                        "internal",
+                        "502",
+                        "503",
+                        "504",
                         "timeout",
-                        "temporarily"
+                        "temporarily",
+                        "connection",
+                        "rate limit"
                     )
                 )
 
@@ -216,7 +290,7 @@ class GeminiChat:
                     delay = delays[attempt]
 
                     print(
-                        f"⚠️ Gemini retry | model={model} "
+                        f"⚠️ OpenRouter retry | model={model} "
                         f"| attempt={attempt + 1}/4 "
                         f"| wait={delay}s",
                         flush=True
@@ -233,9 +307,9 @@ class GeminiChat:
     @staticmethod
     async def ask(chat_id, question):
 
-        if not client:
+        if not API_KEY:
             raise RuntimeError(
-                "Gemini client is not initialized"
+                "OpenRouter client is not initialized"
             )
 
         question = str(question).strip()
@@ -243,21 +317,26 @@ class GeminiChat:
         if not question:
             return "لطفاً سؤال خود را وارد کنید."
 
-        # تاریخچه قبلی کاربر
+        # تاریخچه کاربر
         history = GeminiChat._histories.get(chat_id, [])
 
-        contents = list(history)
+        # تبدیل تاریخچه به فرمت OpenRouter
+        messages = [
+            {
+                "role": "system",
+                "content": SYSTEM_INSTRUCTION
+            }
+        ]
 
-        contents.append(
-            types.Content(
-                role="user",
-                parts=[
-                    types.Part.from_text(text=question)
-                ]
-            )
+        messages.extend(history)
+
+        messages.append(
+            {
+                "role": "user",
+                "content": question
+            }
         )
 
-        # مدل اصلی و مدل جایگزین
         models_to_try = [PRIMARY_MODEL]
 
         if (
@@ -274,9 +353,15 @@ class GeminiChat:
 
             try:
 
+                print(
+                    f"🤖 OpenRouter processing | "
+                    f"model={model} | chat_id={chat_id}",
+                    flush=True
+                )
+
                 answer = await GeminiChat._generate_with_retry(
                     model,
-                    contents
+                    messages
                 )
 
                 used_model = model
@@ -287,43 +372,38 @@ class GeminiChat:
                 last_error = exc
 
                 print(
-                    f"❌ Gemini request failed | "
+                    f"❌ OpenRouter request failed | "
                     f"model={model} | "
                     f"{type(exc).__name__}: {exc}",
                     flush=True
                 )
 
-        # اگر هر دو مدل شکست خوردند
         if not answer:
             raise RuntimeError(
-                f"All Gemini models failed: {last_error}"
+                f"All OpenRouter models failed: {last_error}"
             )
 
-        # ذخیره سؤال و جواب در تاریخچه
+        # ذخیره تاریخچه
         history.append(
-            types.Content(
-                role="user",
-                parts=[
-                    types.Part.from_text(text=question)
-                ]
-            )
+            {
+                "role": "user",
+                "content": question
+            }
         )
 
         history.append(
-            types.Content(
-                role="model",
-                parts=[
-                    types.Part.from_text(text=answer)
-                ]
-            )
+            {
+                "role": "assistant",
+                "content": answer
+            }
         )
 
         # حداکثر 16 پیام
         GeminiChat._histories[chat_id] = history[-16:]
 
         print(
-            f"✅ Gemini answer | chat_id={chat_id} "
-            f"| model={used_model}",
+            f"✅ OpenRouter answer | "
+            f"chat_id={chat_id} | model={used_model}",
             flush=True
         )
 
@@ -335,11 +415,12 @@ class GeminiChat:
 
     @staticmethod
     def clear_history(chat_id):
+
         GeminiChat._histories.pop(chat_id, None)
 
 
 # =========================================================
-# تابع مستقل مورد نیاز main.py
+# تابع سهمیه مورد نیاز main.py
 # =========================================================
 
 async def daily_usage_text(collection, chat_id, special=False):
