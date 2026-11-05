@@ -14,7 +14,9 @@ from pymongo import ReturnDocument
 # CONFIG
 # =========================================================
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+OPENROUTER_API_KEY = os.getenv(
+    "OPENROUTER_API_KEY", ""
+).strip()
 
 PRIMARY_MODEL = os.getenv(
     "OPENROUTER_MODEL",
@@ -26,7 +28,9 @@ FALLBACK_MODEL = os.getenv(
     ""
 ).strip()
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_URL = (
+    "https://openrouter.ai/api/v1/chat/completions"
+)
 
 MAX_DAILY_QUESTIONS = 15
 
@@ -60,23 +64,13 @@ SYSTEM_INSTRUCTION = """
 
 
 # =========================================================
-# AI CHAT CLASS
+# AI CHAT
 # =========================================================
 
 class GeminiChat:
 
+    # تاریخچه مکالمه کاربران
     _histories = {}
-
-    def __init__(self):
-        self.api_key = OPENROUTER_API_KEY
-
-        if not self.api_key:
-            logger.warning("⚠️ OPENROUTER_API_KEY is missing")
-        else:
-            logger.info(
-                "✅ OpenRouter client ready | model=%s",
-                PRIMARY_MODEL
-            )
 
     # -----------------------------------------------------
     # TIME
@@ -101,22 +95,15 @@ class GeminiChat:
     @staticmethod
     def _trim_history(
         history,
-        max_messages=None,
-        max_chars=None
+        max_messages=MAX_HISTORY_MESSAGES,
+        max_chars=MAX_HISTORY_CHARS
     ):
-        if max_messages is None:
-            max_messages = MAX_HISTORY_MESSAGES
-
-        if max_chars is None:
-            max_chars = MAX_HISTORY_CHARS
-
         history = history[-max_messages:]
 
         result = []
         total_chars = 0
 
         for item in reversed(history):
-
             content = str(item.get("content", ""))
 
             if total_chars + len(content) > max_chars:
@@ -152,7 +139,9 @@ class GeminiChat:
             OPENROUTER_URL,
             data=data,
             headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Authorization": (
+                    f"Bearer {OPENROUTER_API_KEY}"
+                ),
                 "Content-Type": "application/json",
                 "HTTP-Referer": "https://arz-online.ir",
                 "X-Title": "Arz Online"
@@ -167,7 +156,9 @@ class GeminiChat:
                 timeout=60
             ) as response:
 
-                response_data = response.read().decode("utf-8")
+                response_data = response.read().decode(
+                    "utf-8"
+            )
 
                 result = json.loads(response_data)
 
@@ -205,7 +196,8 @@ class GeminiChat:
             )
 
             raise RuntimeError(
-                f"OpenRouter HTTP {error.code}: {error_body[:500]}"
+                f"OpenRouter HTTP {error.code}: "
+                f"{error_body[:500]}"
             ) from error
 
         except urllib.error.URLError as error:
@@ -252,8 +244,8 @@ class GeminiChat:
     # GENERATE WITH RETRY
     # -----------------------------------------------------
 
+    @staticmethod
     async def _generate_with_retry(
-        self,
         messages,
         history,
         current_question,
@@ -264,7 +256,7 @@ class GeminiChat:
         try:
 
             return await asyncio.to_thread(
-                self._request_openrouter,
+                GeminiChat._request_openrouter,
                 PRIMARY_MODEL,
                 messages
             )
@@ -272,17 +264,18 @@ class GeminiChat:
         except Exception as error:
 
             # ---------------------------------------------
-            # Message too long
+            # HISTORY TOO LONG
             # ---------------------------------------------
 
-            if self._is_message_too_long(error):
+            if GeminiChat._is_message_too_long(error):
 
                 logger.warning(
-                    "⚠️ Message too long | retrying with smaller history | chat_id=%s",
+                    "⚠️ Message too long | "
+                    "retrying with smaller history | chat_id=%s",
                     chat_id
                 )
 
-                small_history = self._trim_history(
+                small_history = GeminiChat._trim_history(
                     history,
                     max_messages=RETRY_HISTORY_MESSAGES,
                     max_chars=RETRY_HISTORY_CHARS
@@ -305,7 +298,7 @@ class GeminiChat:
                 try:
 
                     return await asyncio.to_thread(
-                        self._request_openrouter,
+                        GeminiChat._request_openrouter,
                         PRIMARY_MODEL,
                         retry_messages
                     )
@@ -313,13 +306,16 @@ class GeminiChat:
                 except Exception as retry_error:
 
                     logger.error(
-                        "❌ Short history retry failed | chat_id=%s | error=%s",
+                        "❌ Short history retry failed | "
+                        "chat_id=%s | error=%s",
                         chat_id,
                         retry_error
                     )
 
                     # آخرین تلاش بدون تاریخچه
-                    if self._is_message_too_long(retry_error):
+                    if GeminiChat._is_message_too_long(
+                        retry_error
+                    ):
 
                         no_history_messages = [
                             {
@@ -332,62 +328,43 @@ class GeminiChat:
                             }
                         ]
 
-                        try:
-
-                            return await asyncio.to_thread(
-                                self._request_openrouter,
-                                PRIMARY_MODEL,
-                                no_history_messages
-                            )
-
-                        except Exception as final_error:
-
-                            logger.error(
-                                "❌ No history retry failed | chat_id=%s | error=%s",
-                                chat_id,
-                                final_error
-                            )
-
-                            raise final_error
+                        return await asyncio.to_thread(
+                            GeminiChat._request_openrouter,
+                            PRIMARY_MODEL,
+                            no_history_messages
+                        )
 
                     raise retry_error
 
             # ---------------------------------------------
-            # Fallback model
+            # FALLBACK MODEL
             # ---------------------------------------------
 
-            if FALLBACK_MODEL and self._is_model_error(error):
+            if (
+                FALLBACK_MODEL
+                and GeminiChat._is_model_error(error)
+            ):
 
                 logger.warning(
                     "⚠️ Primary model unavailable | fallback=%s",
                     FALLBACK_MODEL
                 )
 
-                try:
-
-                    return await asyncio.to_thread(
-                        self._request_openrouter,
-                        FALLBACK_MODEL,
-                        messages
-                    )
-
-                except Exception as fallback_error:
-
-                    logger.error(
-                        "❌ Fallback failed | chat_id=%s | error=%s",
-                        chat_id,
-                        fallback_error
-                    )
-
-                    raise fallback_error
+                return await asyncio.to_thread(
+                    GeminiChat._request_openrouter,
+                    FALLBACK_MODEL,
+                    messages
+                )
 
             raise error
 
     # -----------------------------------------------------
     # ASK
+    # IMPORTANT: main.py calls GeminiChat.ask directly
     # -----------------------------------------------------
 
-    async def ask(self, chat_id, question):
+    @classmethod
+    async def ask(cls, chat_id, question):
 
         question = str(question).strip()
 
@@ -397,12 +374,12 @@ class GeminiChat:
         if not OPENROUTER_API_KEY:
             return "❌ سرویس هوش مصنوعی تنظیم نشده است."
 
-        history = self._get_history(chat_id)
+        history = cls._get_history(chat_id)
 
-        trimmed_history = self._trim_history(
+        trimmed_history = cls._trim_history(
             history,
-            max_messages=MAX_HISTORY_MESSAGES,
-            max_chars=MAX_HISTORY_CHARS
+            MAX_HISTORY_MESSAGES,
+            MAX_HISTORY_CHARS
         )
 
         messages = [
@@ -420,7 +397,8 @@ class GeminiChat:
         })
 
         logger.info(
-            "🤖 OpenRouter processing | model=%s | chat_id=%s | history=%s",
+            "🤖 OpenRouter processing | model=%s | "
+            "chat_id=%s | history=%s",
             PRIMARY_MODEL,
             chat_id,
             len(trimmed_history)
@@ -428,14 +406,14 @@ class GeminiChat:
 
         try:
 
-            answer = await self._generate_with_retry(
+            answer = await cls._generate_with_retry(
                 messages=messages,
                 history=trimmed_history,
                 current_question=question,
                 chat_id=chat_id
             )
 
-            # ذخیره تاریخچه فقط بعد از پاسخ موفق
+            # ذخیره فقط بعد از پاسخ موفق
             history.append({
                 "role": "user",
                 "content": question
@@ -446,10 +424,10 @@ class GeminiChat:
                 "content": answer
             })
 
-            self._histories[chat_id] = self._trim_history(
+            cls._histories[chat_id] = cls._trim_history(
                 history,
-                max_messages=MAX_HISTORY_MESSAGES,
-                max_chars=MAX_HISTORY_CHARS
+                MAX_HISTORY_MESSAGES,
+                MAX_HISTORY_CHARS
             )
 
             logger.info(
@@ -468,7 +446,7 @@ class GeminiChat:
                 error
             )
 
-            if self._is_message_too_long(error):
+            if cls._is_message_too_long(error):
 
                 return (
                     "⚠️ پیام یا سابقه گفتگو بیش از حد طولانی است.\n"
@@ -481,87 +459,128 @@ class GeminiChat:
             )
 
     # =====================================================
-    # DAILY USAGE / MONGODB
+    # DAILY USAGE / MOTOR MONGODB
     # =====================================================
 
+    # -----------------------------------------------------
+    # RESERVE QUESTION
+    # Returns: allowed, remaining
+    # -----------------------------------------------------
+
     @staticmethod
-    def reserve_question(collection, chat_id, special=False):
+    async def reserve_question(
+        collection,
+        chat_id,
+        special=False
+    ):
 
         if special:
-            return True
+            return True, None
 
         today = GeminiChat.today_tehran()
 
-        # افزایش اتمیک شمارنده در صورت وجود سند و داشتن سهمیه
-        document = collection.find_one_and_update(
+        # افزایش اتمیک شمارنده
+        document = await collection.find_one_and_update(
             {
                 "chat_id": chat_id,
                 "date": today,
-                "count": {"$lt": MAX_DAILY_QUESTIONS}
+                "count": {
+                    "$lt": MAX_DAILY_QUESTIONS
+                }
             },
             {
-                "$inc": {"count": 1}
+                "$inc": {
+                    "count": 1
+                }
             },
             return_document=ReturnDocument.AFTER
         )
 
         if document:
-            return True
 
-        # بررسی وجود سند امروز
-        existing = collection.find_one({
+            used = int(document.get("count", 0))
+
+            remaining = max(
+                0,
+                MAX_DAILY_QUESTIONS - used
+            )
+
+            return True, remaining
+
+        # بررسی سند امروز
+        existing = await collection.find_one({
             "chat_id": chat_id,
             "date": today
         })
 
         if existing:
-            return False
+            return False, 0
 
-        # اولین سؤال روز
+        # اولین سؤال امروز
         try:
 
-            collection.insert_one({
+            await collection.insert_one({
                 "chat_id": chat_id,
                 "date": today,
                 "count": 1
             })
 
-            return True
+            return True, MAX_DAILY_QUESTIONS - 1
 
         except Exception:
 
-            # احتمال ثبت همزمان توسط درخواست دیگر
-            document = collection.find_one_and_update(
+            # احتمال درخواست همزمان
+            document = await collection.find_one_and_update(
                 {
                     "chat_id": chat_id,
                     "date": today,
-                    "count": {"$lt": MAX_DAILY_QUESTIONS}
+                    "count": {
+                        "$lt": MAX_DAILY_QUESTIONS
+                    }
                 },
                 {
-                    "$inc": {"count": 1}
+                    "$inc": {
+                        "count": 1
+                    }
                 },
                 return_document=ReturnDocument.AFTER
             )
 
-            return document is not None
+            if document:
+
+                used = int(document.get("count", 0))
+
+                return True, max(
+                    0,
+                    MAX_DAILY_QUESTIONS - used
+                )
+
+            return False, 0
 
     # -----------------------------------------------------
-    # REFUND
+    # REFUND QUESTION
     # -----------------------------------------------------
 
     @staticmethod
-    def refund_question(collection, chat_id):
+    async def refund_question(
+        collection,
+        chat_id
+    ):
 
         today = GeminiChat.today_tehran()
 
-        collection.update_one(
+        await collection.update_one(
             {
                 "chat_id": chat_id,
                 "date": today,
-                "count": {"$gt": 0}
+                "count": {
+                    "$gt": 0
+                }
             },
             {
-                "$inc": {"count": -1}
+                "$inc": {
+                    "count": -1
+                }
             }
         )
 
@@ -570,11 +589,14 @@ class GeminiChat:
     # -----------------------------------------------------
 
     @staticmethod
-    def get_usage(collection, chat_id):
+    async def get_usage(
+        collection,
+        chat_id
+    ):
 
         today = GeminiChat.today_tehran()
 
-        document = collection.find_one({
+        document = await collection.find_one({
             "chat_id": chat_id,
             "date": today
         })
@@ -585,7 +607,7 @@ class GeminiChat:
         return int(document.get("count", 0))
 
     # -----------------------------------------------------
-    # DAILY USAGE TEXT - CLASS METHOD
+    # DAILY USAGE TEXT
     # -----------------------------------------------------
 
     @staticmethod
@@ -602,7 +624,7 @@ class GeminiChat:
                 "♾ محدودیت روزانه سؤال: نامحدود"
             )
 
-        used = GeminiChat.get_usage(
+        used = await GeminiChat.get_usage(
             collection,
             chat_id
         )
@@ -614,14 +636,15 @@ class GeminiChat:
 
         return (
             "🤖 وضعیت هوش مصنوعی\n\n"
-            f"📊 سؤال‌های استفاده‌شده امروز: {used}/{MAX_DAILY_QUESTIONS}\n"
+            f"📊 سؤال‌های استفاده‌شده امروز: "
+            f"{used}/{MAX_DAILY_QUESTIONS}\n"
             f"🟢 سؤال‌های باقی‌مانده: {remaining}"
         )
 
 
 # =========================================================
-# DAILY USAGE TEXT - MODULE LEVEL
-# IMPORTANT: main.py imports this function directly
+# MODULE LEVEL FUNCTION
+# main.py imports daily_usage_text directly
 # =========================================================
 
 async def daily_usage_text(
@@ -629,6 +652,7 @@ async def daily_usage_text(
     chat_id,
     special=False
 ):
+
     return await GeminiChat.daily_usage_text(
         collection,
         chat_id,
