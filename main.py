@@ -11,7 +11,7 @@ from bale import Bot, Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboa
 import requests
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.server_api import ServerApi
-from ai_chat import GeminiChat, daily_usage_text
+from ai_chat import GeminiChat, daily_usage_text, AIRequestError
 
 # ==================== تنظیمات ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
@@ -2286,19 +2286,25 @@ async def on_message(message: Message):
             return
     except:
         pass
-    if message.author is None or message.author.is_bot or not message.content:
+    if message.author is None or message.author.is_bot:
         return
 
-    content = message.content
-    if 'انتقادات و پیشنهادات:' in content or 'توسعه‌دهنده:' in content:
+    # پیام می‌تواند متن، عکس یا عکس همراه کپشن باشد.
+    content = (getattr(message, "content", None) or "").strip()
+    photos = getattr(message, "photos", None) or []
+    if not content and not photos:
         return
-    if '📊 **نرخ لحظه‌ای بازار**' in content or 'نرخ لحظه‌ای بازار' in content:
-        return
-    if content.count('تومان') >= 3:
-        return
+
+    if content:
+        if 'انتقادات و پیشنهادات:' in content or 'توسعه‌دهنده:' in content:
+            return
+        if '📊 **نرخ لحظه‌ای بازار**' in content or 'نرخ لحظه‌ای بازار' in content:
+            return
+        if content.count('تومان') >= 3:
+            return
 
     user_id = get_user_id_from_message(message)
-    text = message.content.strip()
+    text = content
     text_upper = text.upper()
 
     # بسیار مهم: هنگام Deploy ممکن است on_message قبل از تمام‌شدن اتصال MongoDB اجرا شود.
@@ -2396,31 +2402,50 @@ async def on_message(message: Message):
                 )
                 return
 
-    # ==================== گفت‌وگوی هوش مصنوعی ====================
+    # ==================== گفت‌وگوی هوش مصنوعی (متن و تصویر) ====================
     if user_states.get(user_id, {}).get("state") == "ai_chat":
         if text in {"/cancel", "لغو", "بازگشت", "🔙 بازگشت", "🏠 منوی اصلی"}:
             clear_state(user_id)
             await show_main_menu(message, user_id)
             return
+        if not content and not photos:
+            return
         if ai_usage_collection is None:
             await message.reply("❌ دیتابیس سهمیه هوش مصنوعی در دسترس نیست. کمی بعد تلاش کنید.")
             return
+
         user = await get_user(user_id)
         special = bool(user and user.get("special_user") is True)
+        reserved = False
         try:
             allowed, remaining = await GeminiChat.reserve_question(ai_usage_collection, user_id, special)
             if not allowed:
-                await message.reply("⛔ سهمیه امروز شما تمام شده است (۱۵ سؤال). فردا دوباره می‌توانید استفاده کنید.\n\n🏠 برای خروج از چت: «بازگشت»")
+                await message.reply("⛔ سهمیه امروز شما تمام شده است (۱۵ سؤال).\n\n🕛 سهمیه فردا ساعت ۰۰:۰۰ به وقت تهران دوباره فعال می‌شود.\n\n🏠 برای خروج از چت: «بازگشت»")
                 return
-            answer = await GeminiChat.ask(user_id, text)
+            reserved = not special
+
+            if photos:
+                # عکس بزرگ‌تر را از بین نسخه‌های Bale انتخاب می‌کنیم.
+                photo = max(photos, key=lambda item: int(getattr(item, "file_size", 0) or 0))
+                file_id = getattr(photo, "file_id", None)
+                if not file_id:
+                    raise AIRequestError("Bale photo file_id is missing")
+                image_bytes = await bot.get_file(file_id)
+                image_question = content or "این تصویر را دقیق بررسی و توضیح بده."
+                answer = await GeminiChat.ask_image(user_id, image_bytes, image_question)
+            else:
+                answer = await GeminiChat.ask(user_id, text)
+
             suffix = "\n\n♾️ کاربر خاص | سهمیه نامحدود" if special else f"\n\n📊 سهمیه امروز: {remaining} سؤال باقی مانده"
             await message.reply(answer + suffix)
         except Exception as ai_error:
-            # اگر درخواست Gemini شکست خورد، سؤال برای کاربر عادی به سهمیه برگردد.
-            if not special:
-                await GeminiChat.refund_question(ai_usage_collection, user_id)
+            if reserved:
+                try:
+                    await GeminiChat.refund_question(ai_usage_collection, user_id)
+                except Exception as refund_error:
+                    print(f"❌ AI quota refund error: {refund_error}", flush=True)
             print(f"❌ AI chat error: {type(ai_error).__name__}: {ai_error}", flush=True)
-            await message.reply("⚠️ ارتباط با Gemini برقرار نشد؛ سهمیه این سؤال مصرف نشد. لطفاً کمی بعد دوباره تلاش کن.")
+            await message.reply("⚠️ پاسخ هوش مصنوعی دریافت نشد؛ سهمیه این سؤال مصرف نشد.\nلطفاً چند دقیقه دیگر دوباره تلاش کن.")
         return
 
     # ============================================================
@@ -3004,7 +3029,7 @@ async def on_callback(callback: CallbackQuery):
         clear_state(user_id)
         user_states[user_id] = {"state": "ai_chat", "data": {}}
         remaining = await daily_usage_text(ai_usage_collection, user_id, bool((await get_user(user_id) or {}).get("special_user")))
-        intro = ("🤖 **چت هوش مصنوعی ارز آنلاین**\n\nسؤالت را ارسال کن تا Gemini پاسخ دهد.\n\n"
+        intro = ("🤖 **چت هوش مصنوعی ارز آنلاین**\n\nسؤالت را ارسال کن یا عکس بفرست تا هوش مصنوعی آن را تحلیل کند.\n\n"
                  "👤 کاربران عادی: روزانه ۱۵ سؤال\n⭐ کاربران خاص: نامحدود\n\n"
                  f"{remaining}\n\nبرای برگشت، «بازگشت» را بفرست.")
         try:
