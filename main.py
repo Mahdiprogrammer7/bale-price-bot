@@ -820,11 +820,13 @@ async def check_channel_membership(user_id, use_cache=True):
         if response.status_code != 200 or not body.get("ok", False):
             description = body.get("description", "پاسخ نامعتبر از API بله")
             print(
-                f"❌ Force Join API | user={user_id} | http={response.status_code} | {description}",
+                f"⚠️ Force Join direct API failed | user={user_id} | http={response.status_code} | {description} | trying Bale library/proxy fallback",
                 flush=True,
             )
-            _force_join_cache.pop(user_id, None)
-            return False
+            # درخواست requests از مسیر پروکسی aiohttp عبور نمی‌کند.
+            # اگر API مستقیم خطا داد (از جمله 401)، به جای رد کردن کاربر،
+            # اجرای تابع را به fallback کتابخانه Bale می‌سپاریم که از پروکسی فعال استفاده می‌کند.
+            raise RuntimeError(f"Direct Bale API failed: HTTP {response.status_code}: {description}")
 
         result = body.get("result") or {}
         raw_status = result.get("status")
